@@ -28,26 +28,20 @@ jobs:
 
     env:
       MEDIAKIT_DIR: src/workbench/products/mediakit
-      FRONTEND_DIR: src/workbench/products/mediakit/frontend
 
     steps:
       - name: Checkout du repo
         uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      # ─── Frontend ───
-      - name: Installer et builder le frontend
-        working-directory: ${{ env.FRONTEND_DIR }}
-        run: |
-          bun install
-          bun run build
+      # ─── Frontend déjà buildé et committé (dist/) — aucune étape npm/bun ici.
+      # ⚠️ Avant de commit dist/, vérifier que public/config.json utilise des
+      # URLs RELATIVES ("apiBaseUrl": "/api") — le port backend est dynamique,
+      # une URL absolue fige un port qui n'existera plus au prochain lancement.
 
       # ─── Backend Python ───
       - name: Installer les dépendances Python (workbench + mediakit)
