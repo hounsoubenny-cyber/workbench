@@ -11,6 +11,7 @@ import asyncio
 import subprocess
 from pydantic import BaseModel
 from workbench.wb_utils.stop_process import kill_process_async
+from workbench.wb_utils.get_clean_env import get_clean_subprocess_env
 
 class BinaryNotFoundError(Exception):
     pass
@@ -40,6 +41,7 @@ def get_binary_version(
     result = subprocess.run(
         [binary_path, config.cmd],
         capture_output=True, text=True, timeout=5,
+        env=get_clean_subprocess_env()
     )
     output = (result.stdout + result.stderr).lower()
     
@@ -75,6 +77,7 @@ async def get_binary_version_async(
         binary_path, config.cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        env=get_clean_subprocess_env()
     )
     try:
         stdout_bytes, stderr_bytes = await asyncio.wait_for(process.communicate(), timeout=5)

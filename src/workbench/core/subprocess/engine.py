@@ -20,7 +20,7 @@ from workbench.core.subprocess.version_checker import (
 )
 from workbench.wb_utils.loop_utils import _run_async
 from workbench.wb_utils.stop_process import kill_process_async
-
+from workbench.wb_utils.get_clean_env import get_clean_subprocess_env
 
 TRUSTED_DIRS = [
     "/usr/local/bin",
@@ -201,6 +201,7 @@ class CommandEngine:
             cwd=self.workdir,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=get_clean_subprocess_env()
         )
 
         stdout_chunks: list[str] = []
