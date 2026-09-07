@@ -58,6 +58,8 @@ jobs:
 
       - name: Compiler le backend avec PyInstaller (.spec)
         working-directory: ${{ env.MEDIAKIT_DIR }}/api
+        env:
+          PYTHONUTF8: "1"
         run: pyinstaller mediakit.spec
 
       # ─── Renommer pour un nom clair et unique par OS dans la Release ───
