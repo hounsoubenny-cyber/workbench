@@ -1,0 +1,263 @@
+/* ==========================================================================
+   CONFIG MODAL — WORKBENCH MEDIAKIT
+   Boîte de dialogue modale pilotée par les variables de index.css
+   ========================================================================== */
+
+.wb-config-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: wb-modal-fade-in var(--duration-fast) var(--ease);
+}
+
+@keyframes wb-modal-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.wb-config-modal {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 620px;
+  max-height: 88vh;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  font-family: var(--font-body);
+  animation: wb-modal-zoom-in var(--duration-base) var(--ease);
+}
+
+@keyframes wb-modal-zoom-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* ─── En-tête ─── */
+.wb-config-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  background: var(--bg-surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.wb-config-modal__title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wb-config-modal__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent-strong);
+}
+
+.wb-config-modal__title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.wb-config-modal__header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.wb-config-modal__btn-icon {
+  padding: 6px 10px;
+}
+
+.wb-config-modal__close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border-radius: var(--radius-md);
+  color: var(--text-tertiary);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  transition:
+    color var(--duration-fast) var(--ease),
+    background-color var(--duration-fast) var(--ease);
+}
+
+.wb-config-modal__close-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+/* ─── Formulaire & Corps Défilable ─── */
+.wb-config-modal__form {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex: 1;
+}
+
+.wb-config-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  overflow-y: auto;
+}
+
+.wb-config-modal__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  transition: border-color var(--duration-fast) var(--ease);
+}
+
+.wb-config-modal__section:hover {
+  border-color: var(--border-strong);
+}
+
+.wb-config-modal__field-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.wb-config-modal__label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.wb-config-modal__label-icon {
+  color: var(--accent-strong);
+}
+
+.wb-config-modal__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-tertiary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.wb-config-modal__preview {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.wb-config-modal__input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.wb-config-modal__input {
+  font-family: var(--font-mono);
+  font-size: 0.92rem;
+  padding: 7px 12px;
+}
+
+.wb-config-modal__unit {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.wb-config-modal__help {
+  font-size: 0.74rem;
+  color: var(--text-tertiary);
+  line-height: 1.35;
+}
+
+/* ─── Pied de page Modal ─── */
+.wb-config-modal__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  background: var(--bg-surface-2);
+  border-top: 1px solid var(--border);
+}
+
+.wb-config-modal__footer-status {
+  display: flex;
+  align-items: center;
+}
+
+.wb-config-modal__footer-buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.wb-config-modal__btn {
+  padding: 7px 14px;
+  font-size: 0.84rem;
+}
+
+.wb-spin {
+  animation: wb-spin-anim 0.9s linear infinite;
+}
+
+@keyframes wb-spin-anim {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 640px) {
+  .wb-config-modal {
+    max-height: 95vh;
+  }
+  .wb-config-modal__body {
+    padding: var(--space-3);
+  }
+  .wb-config-modal__footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .wb-config-modal__footer-buttons {
+    justify-content: flex-end;
+  }
+}

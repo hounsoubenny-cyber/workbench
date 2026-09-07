@@ -1,0 +1,235 @@
+/* ============================================================================
+   MARKDOWN RENDERER — styles pour tableaux, blocs de code, liens et autres
+   éléments markdown (react-markdown + remark-gfm), partagés entre
+   AIMessage, HumanMessage et les blocs "Réflexion".
+   Utilise les variables --obs-* définies dans ai_human_messages.css :
+   pense à importer ce fichier APRÈS ai_human_messages.css, ou à t'assurer
+   que les deux sont chargés dans le même arbre (les variables sont sur :root).
+   ============================================================================ */
+
+
+/* ============================================================================
+   MARKDOWN — TABLEAUX (react-markdown + remark-gfm)
+   ============================================================================ */
+
+.md-table-wrapper {
+    margin: 10px 0;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--bg-surface);
+    overflow: hidden;
+}
+
+.md-table-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: var(--bg-surface-2);
+    border-bottom: 1px solid var(--border);
+}
+
+.md-table-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-tertiary);
+}
+
+.md-table-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.md-table-actions button {
+    display: flex;
+    align-items: center;
+    background: none;
+    border: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 6px;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.md-table-actions button:hover {
+    background: var(--bg-surface);
+    color: var(--text-primary);
+}
+
+.md-table-scroll {
+    overflow-x: auto;
+}
+
+.md-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    font-family: var(--font-body);
+}
+
+.md-thead {
+    background: var(--bg-surface-2);
+}
+
+.md-th {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    text-align: left;
+    color: var(--text-primary);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.md-td {
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    color: var(--text-secondary);
+    vertical-align: top;
+}
+
+.md-th:last-child,
+.md-td:last-child {
+    border-right: none;
+}
+
+.md-table tbody tr:last-child .md-td {
+    border-bottom: none;
+}
+
+.md-table tbody tr:hover .md-td {
+    background: var(--bg-surface-2);
+    color: var(--text-primary);
+}
+
+/* ============================================================================
+   MARKDOWN — BLOCS DE CODE (copier / télécharger)
+   ============================================================================ */
+
+.inline-code {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    background: var(--bg-surface-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: var(--info);
+}
+
+.code-block-wrapper {
+    margin: 10px 0;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    background: var(--bg-surface-2);
+}
+
+.code-block-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border);
+}
+
+.code-block-lang {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-tertiary);
+}
+
+.code-block-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.code-block-actions button {
+    display: flex;
+    align-items: center;
+    background: none;
+    border: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 6px;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.code-block-actions button:hover {
+    background: var(--bg-surface-2);
+    color: var(--text-primary);
+}
+
+.code-block-wrapper pre {
+    margin: 0 !important;
+}
+
+/* ============================================================================
+   MARKDOWN — LIENS, CITATIONS, LISTES, TITRES
+   ============================================================================ */
+
+.md-link {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    text-decoration-color: var(--accent-soft);
+    transition: color 0.15s ease;
+}
+
+.md-link:hover {
+    color: #a5b1ff;
+}
+
+.msg-content blockquote,
+.msg-content-human blockquote {
+    margin: 8px 0;
+    padding: 4px 12px;
+    border-left: 3px solid var(--accent-soft);
+    color: var(--text-secondary);
+    background: var(--bg-surface);
+    border-radius: 0 6px 6px 0;
+}
+
+.msg-content ul,
+.msg-content ol {
+    padding-left: 20px;
+    margin: 6px 0;
+}
+
+.msg-content li {
+    margin: 2px 0;
+}
+
+.msg-content h1,
+.msg-content h2,
+.msg-content h3 {
+    margin: 12px 0 6px;
+    color: var(--text-primary);
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.msg-content h1 { font-size: 1.25em; }
+.msg-content h2 { font-size: 1.15em; }
+.msg-content h3 { font-size: 1.05em; }
+
+.msg-content hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 12px 0;
+}
+
+.msg-content img {
+    max-width: 100%;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+}

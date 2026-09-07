@@ -1,0 +1,403 @@
+/* ==========================================================================
+   JOB CREATE & ADVANCED MODALS — WORKBENCH MEDIAKIT
+   ========================================================================== */
+
+.wb-job-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.wb-job-modal {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 680px;
+  max-height: 88vh;
+  height: auto;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  font-family: var(--font-body);
+}
+
+.wb-job-modal--advanced {
+  max-width: 860px;
+}
+
+/* En-tête fixe */
+.wb-job-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  background: var(--bg-surface-2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.wb-job-modal__title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wb-job-modal__title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.wb-job-modal__close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wb-job-modal__close-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+/* Formulaire et corps défilable */
+.wb-job-modal__form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.wb-job-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* Pied de page fixe */
+.wb-job-modal__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  background: var(--bg-surface-2);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* Timeout Row */
+.wb-job-modal__timeout-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 0.84rem;
+}
+
+.wb-job-modal__timeout-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.wb-job-modal__timeout-input-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+}
+
+.wb-job-modal__timeout-input {
+  width: 80px;
+  text-align: center;
+  padding: 4px 8px;
+}
+
+/* ==========================================================================
+   MODE MANUEL (RAWENTRY) : STYLES DES CARTES D'ARGUMENTS
+   ========================================================================== */
+
+.wb-raw-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.wb-raw-section--options {
+  background: var(--bg-surface);
+}
+
+.wb-raw-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.wb-raw-section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--accent-strong);
+}
+
+.wb-raw-grid-2 {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: var(--space-3);
+}
+
+/* Options d'exécution */
+.wb-raw-options-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.wb-raw-option-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.wb-raw-min-version-box {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.wb-raw-min-version-input {
+  width: 120px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  padding: 4px 8px;
+  text-align: center;
+}
+
+.wb-raw-min-version-box .hint {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-tertiary);
+}
+
+/* ─── Cartes d'Arguments Individuels ─── */
+.wb-raw-add-btn {
+  padding: 4px 10px;
+  font-size: 0.75rem;
+}
+
+.wb-raw-args-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.wb-raw-arg-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+/* 
+   GRILLE PARFAITE POUR L'EN-TÊTE DE CARTE :
+   Empêche tout débordement de l'input et garde la poubelle visible 
+*/
+.wb-raw-arg-card__grid-header {
+  display: grid;
+  grid-template-columns: 28px 210px 1fr 34px;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.wb-raw-arg-index {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--text-tertiary);
+}
+
+.wb-raw-type-select {
+  width: 100%;
+  font-size: 0.82rem;
+}
+
+.wb-raw-flag-input {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 0.84rem;
+  box-sizing: border-box;
+}
+
+.wb-raw-del-btn {
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  color: var(--danger);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color var(--duration-fast) var(--ease);
+}
+
+.wb-raw-del-btn:hover {
+  background: var(--danger-soft);
+}
+
+/* Corps dynamique selon le type */
+.wb-raw-arg-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-left: calc(var(--space-2) + 8px);
+  border-left: 2px solid var(--accent-soft);
+}
+
+.wb-raw-sublabel {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* Ligne Path avec File Picker direct */
+.wb-raw-path-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.path-input-group,
+.path-file-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wb-raw-mini-upload {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-2);
+  border: 1px dashed var(--border-strong);
+  color: var(--accent-strong);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  width: fit-content;
+  transition: all var(--duration-fast) var(--ease);
+}
+
+.wb-raw-mini-upload:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.wb-raw-checkboxes {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.wb-raw-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.wb-raw-checkbox-label input {
+  accent-color: var(--accent);
+}
+
+.file-ready-tag {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 2px 6px;
+  background: var(--success-soft);
+  color: var(--success);
+  border-radius: var(--radius-sm);
+}
+
+/* Nombres & Grilles */
+.wb-raw-number-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.num-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wb-raw-enum-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: var(--space-3);
+}
+
+.wb-raw-multipath-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.mp-header-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.hidden {
+  display: none;
+}
+
+.text-center {
+  text-align: center;
+}

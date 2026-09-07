@@ -1,0 +1,301 @@
+/* ==========================================================================
+   HELP & DOCS PAGE — WORKBENCH MEDIAKIT
+   ========================================================================== */
+
+.wb-help-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4) var(--space-8);
+  font-family: var(--font-body);
+}
+
+/* ─── En-tête ─── */
+.wb-help-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--space-6) var(--space-4);
+  background: radial-gradient(ellipse 600px 250px at 50% 0%, var(--accent-soft), transparent 75%);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border);
+}
+
+.wb-help-hero__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border-strong);
+  color: var(--accent-strong);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin-bottom: var(--space-3);
+}
+
+.wb-help-hero__title {
+  font-family: var(--font-display);
+  font-size: clamp(1.8rem, 3.5vw, 2.6rem);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 var(--space-2);
+  letter-spacing: -0.02em;
+}
+
+.wb-help-hero__subtitle {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  max-width: 620px;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ─── Sections Communes ─── */
+.wb-help-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.wb-help-section__header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.section-tag {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--accent-strong);
+  letter-spacing: 0.06em;
+}
+
+.section-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+/* ─── Grille des 4 Étapes ─── */
+.wb-help-steps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-3);
+}
+
+.wb-help-step-card {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4);
+  gap: var(--space-2);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.step-badge {
+  display: inline-flex;
+  width: fit-content;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  border: 1px solid var(--border-strong);
+}
+
+.wb-help-step-card h3 {
+  margin: 0;
+  font-size: 0.96rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.wb-help-step-card p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+/* ─── Grille des 3 Outils ─── */
+.wb-help-tools-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-4);
+}
+
+.wb-help-tool-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-5);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.tool-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.tool-card-head h4 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.tool-icon--ffmpeg { color: var(--accent-strong); }
+.tool-icon--sox { color: var(--info); }
+.tool-icon--magick { color: var(--warning); }
+
+.wb-help-tool-card p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* ─── Grille du Glossaire ─── */
+.wb-help-glossary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: var(--space-3);
+}
+
+.wb-glossary-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.glossary-term {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--accent-strong);
+}
+
+.wb-glossary-card p {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.wb-glossary-card p strong {
+  color: var(--text-primary);
+}
+
+/* ─── Accordéon FAQ ─── */
+.wb-faq-accordion {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.wb-faq-item {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  overflow: hidden;
+  transition: border-color var(--duration-fast) var(--ease);
+}
+
+.wb-faq-item.is-open {
+  border-color: var(--border-strong);
+}
+
+.wb-faq-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.wb-faq-trigger:hover {
+  background: var(--bg-hover);
+}
+
+.wb-faq-question {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.wb-faq-emoji {
+  font-size: 1rem;
+}
+
+.wb-faq-content {
+  padding: 0 var(--space-4) var(--space-3) calc(var(--space-4) + 24px);
+  font-size: 0.84rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  animation: wb-fade-in var(--duration-fast) var(--ease);
+}
+
+.wb-faq-content p {
+  margin: 0;
+}
+
+/* ─── CTA Final ─── */
+.wb-help-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+}
+
+.wb-help-cta h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.wb-help-cta p {
+  margin: 0 0 var(--space-2);
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+}
+
+.help-cta-btn {
+  padding: 10px 20px;
+  font-size: 0.9rem;
+}

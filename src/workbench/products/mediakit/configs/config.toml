@@ -1,0 +1,4 @@
+max_concurrent_job = 10
+buffer_max_lines = 1200
+buffer_clear_delay = 120.0
+file_ttl = 3600.0

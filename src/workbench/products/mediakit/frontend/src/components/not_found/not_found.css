@@ -1,0 +1,134 @@
+/* ==========================================================================
+   PAGE 404 NOT FOUND — WORKBENCH MEDIAKIT
+   ========================================================================== */
+
+.wb-notfound-container {
+  min-height: calc(100vh - 80px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6) var(--space-4);
+  background: radial-gradient(ellipse 600px 300px at 50% 30%, var(--danger-soft), transparent 70%);
+}
+
+.wb-notfound-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  max-width: 580px;
+  width: 100%;
+  padding: var(--space-7) var(--space-6);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(12px);
+  animation: wb-fade-in var(--duration-base) var(--ease);
+}
+
+.wb-notfound-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  background: var(--danger-soft);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--space-3);
+}
+
+.wb-notfound-code {
+  font-family: var(--font-display);
+  font-size: clamp(4rem, 10vw, 6.5rem);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  margin: 0;
+  background: linear-gradient(180deg, var(--text-primary) 30%, var(--danger) 100%);
+  -webkit-background-clip: text;
+  background-clip: text; 
+  -webkit-text-fill-color: transparent;
+}
+
+.wb-notfound-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: var(--space-2) 0;
+}
+
+.wb-notfound-desc {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0 0 var(--space-5);
+  max-width: 440px;
+}
+
+/* ─── Faux Terminal d'Erreur ─── */
+.wb-notfound-terminal {
+  width: 100%;
+  background: #030508;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: var(--space-6);
+  text-align: left;
+}
+
+.wb-notfound-terminal__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 12px;
+  background: var(--bg-surface-2);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+}
+
+.wb-notfound-terminal__body {
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.line-err { color: var(--danger); }
+.line-dim { color: var(--text-tertiary); }
+.line-info { color: var(--info); }
+
+/* ─── Actions ─── */
+.wb-notfound-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.notfound-btn {
+  padding: 9px 18px;
+  font-size: 0.86rem;
+}
+
+@media (max-width: 640px) {
+  .wb-notfound-card {
+    padding: var(--space-5) var(--space-4);
+  }
+  .wb-notfound-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

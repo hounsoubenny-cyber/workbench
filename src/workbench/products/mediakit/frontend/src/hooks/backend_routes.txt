@@ -1,0 +1,2 @@
+export const getConfigRoute = "/config";
+export const setConfigRoute = "/config";

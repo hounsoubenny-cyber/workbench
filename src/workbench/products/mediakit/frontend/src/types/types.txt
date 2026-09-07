@@ -1,0 +1,302 @@
+/**
+ * =============================================================================
+ * WORKBENCH MEDIAKIT — TYPES TYPESCRIPT DU FRONTEND 
+ * =============================================================================
+ */
+
+// =============================================================================
+// 1. CONFIGURATION CLIENT (public/config.json) & ÉTAT SYSTÈME
+// =============================================================================
+
+export interface AppConfig {
+  productName: string;       // ex: "Workbench Mediakit"
+  apiBaseUrl: string;        // ex: "http://127.0.0.1:8000/api"
+  wsBaseUrl: string;         // ex: "ws://127.0.0.1:8000/api"
+  version?: string;          // ex: "1.0.0"
+}
+
+export type ToolName = "ffmpeg" | "magick" | "sox";
+
+export interface WbConfig {
+  maxConcurrentJob: number;
+  bufferMaxLines: number | null;
+  bufferClearDelay: number;
+  fileTtl: number;
+}
+
+export type UpdateConfigData = Partial<WbConfig>;
+
+export type JobStatus = "running" | "stop" | "failed" | "finished";
+
+export interface BinaryCheckResponse {
+  find: boolean;
+}
+
+export interface ApiStatusResponse {
+  status: "ok" | string;
+}
+
+// =============================================================================
+// 2. ERREURS & FORMATS D'EXCEPTIONS
+// =============================================================================
+
+export type ErrorCode =
+| "PIPELINE_STEP_FAILED"
+| "TOO_MANY_JOBS"
+| "INVALID_SPEC"
+| "JOB_ALREADY_EXISTS"
+| "JOB_TIMEOUT"
+| "JOB_CANCELLED"
+| "FORBIDDEN_PATH"
+| "FILE_NOT_FOUND"
+| "TOOL_MISSING"
+| "TOOL_UNVERIFIED"
+| "TOOL_VERSION_INCOMPATIBLE"
+| "VALIDATION_BUSINESS_ERROR"
+| "INVALID_INPUT_PARAMS"
+| "INVALID_ARGUMENT"
+| "INTERNAL_ENGINE_ERROR"
+| "UPLOAD_COUNT_MISMATCH"
+| "DUPLICATE_UPLOAD_NAME"
+| "INVALID_UPLOAD_NAME";
+
+export interface ApiErrorDetail {
+  errorCode: ErrorCode;
+  message: string;
+  statusCode: number;
+  details?: Record<string, any>;
+  error?: string;
+  type?: string;
+}
+
+export interface ApiHttpError {
+  detail: ApiErrorDetail | string;
+}
+
+// =============================================================================
+// 3. INTROSPECTION DYNAMIQUE DES FORMULAIRES (model_parser.py)
+// =============================================================================
+
+export type FieldUiType =
+| "string"
+| "integer"
+| "float"
+| "boolean"
+| "enum"
+| `list[${string}]`
+| string;
+
+export interface FieldConstraints {
+  ge?: number;
+  le?: number;
+  gt?: number;
+  lt?: number;
+  minLength?: number;
+  maxLength?: number;
+}
+
+export interface FieldSchema {
+  name: string;
+  type: FieldUiType;
+  required: boolean;
+  default: any;
+  description: string;
+  isUpload: boolean;
+  choices: string[] | number[] | null;
+  constraints: FieldConstraints;
+  value?: any;
+}
+
+export type ModelSchema = Record<string, FieldSchema>;
+
+// =============================================================================
+// 4. RÉSUMÉS DE SPECS & CATALOGUES (/catalog & /spec/{id}/info)
+// =============================================================================
+
+export interface ActionSpecSummary {
+  id: string;
+  label: string;
+  type: "action";
+  tool: ToolName;
+  minVersion?: [number, number, number] | [number, number] | null;
+}
+
+export interface PipelineStepSummary {
+  id: string;
+  tool: ToolName;
+  actionId: string;
+}
+
+export interface PipelineSpecSummary {
+  id: string;
+  label: string;
+  type: "pipeline";
+  steps: PipelineStepSummary[];
+}
+
+export type SpecSummary = ActionSpecSummary | PipelineSpecSummary;
+
+export interface SpecInfoResponse {
+  input: ModelSchema;
+  summary: SpecSummary;
+  success: boolean;
+  isActionSpec: boolean;
+}
+
+export interface CatalogCategory<T = ActionSpecSummary | PipelineSpecSummary> {
+  description: string;
+  values: Record<string, T>;
+}
+
+export interface ToolCatalog {
+  allCat: Record<string, ActionSpecSummary>;
+  categories: Record<string, CatalogCategory<ActionSpecSummary>>;
+}
+
+export interface PipelineCatalog {
+  allCat: Record<string, PipelineSpecSummary>;
+  categories: Record<string, CatalogCategory<PipelineSpecSummary>>;
+}
+
+export interface FullCatalogResponse {
+  actionSpecs: {
+    ffmpeg: ToolCatalog;
+    magick: ToolCatalog;
+    sox: ToolCatalog;
+    allCat: Record<string, ActionSpecSummary>;
+  };
+  pipelineSpecs: {
+    allCat: Record<string, PipelineSpecSummary>;
+    categories?: Record<string, CatalogCategory<PipelineSpecSummary>>;
+  };
+}
+
+// =============================================================================
+// 5. CRÉATION DE JOBS & RÉSULTATS D'EXÉCUTION
+// =============================================================================
+
+export interface OutputFileEntry {
+  id: string;
+  file: string | null;
+  pos: number;
+  last: boolean;
+}
+
+export interface CreateJobWithCatalogPayload {
+  id: string;
+  userInput: Record<string, any>;
+  timeout?: number | null;
+}
+
+export interface CreateJobResponse {
+  workdir: string;
+  jobId: string;
+  spec: SpecSummary;
+  isActionSpec: boolean;
+  outputFiles: OutputFileEntry[];
+  isCustomSpec: boolean;
+}
+
+export interface ExecResult {
+  returnCode: number;
+  stdout: string;
+  stderr: string;
+  ok: boolean;
+  success: boolean;
+  outputFilename?: string;
+}
+
+export interface JobStatusResponse {
+  status: JobStatus | "unknown";
+}
+
+export interface JobStopResponse {
+  success: boolean;
+}
+
+// =============================================================================
+// 6. MESSAGES WEBSOCKET EN DIRECT (/job/ws/logs?job_id=...)
+// =============================================================================
+
+export interface WsRunLogMessage {
+  type: "run_log";
+  stream: "stdout" | "stderr";
+  text: string;
+  timestamp?: string;
+}
+
+export interface WsReplayStartMessage {
+  type: "replay_start";
+  count: number;
+  message: string;
+  timestamp?: string;
+}
+
+export interface WsReplayEndMessage {
+  type: "replay_end";
+  timestamp?: string;
+}
+
+export interface WsJobResultMessage {
+  type: "job_result";
+  result: ExecResult | Record<string, any>;
+  timestamp?: string;
+}
+
+export interface WsJobEndMessage {
+  type: "job_end";
+  timestamp?: string;
+}
+
+export interface WsInfoMessage {
+  type: "info";
+  message: string;
+  timestamp?: string;
+}
+
+export type WsIncomingMessage =
+| WsRunLogMessage
+| WsReplayStartMessage
+| WsReplayEndMessage
+| WsJobResultMessage
+| WsJobEndMessage
+| WsInfoMessage;
+
+// =============================================================================
+// 7. MOTEUR DYNAMIQUE AVANCÉ (/job/advanced/create — RawEntry)
+// =============================================================================
+
+export type ArgTypeEnum =
+| "path"
+| "int"
+| "float"
+| "bool"
+| "enum"
+| "pattern"
+| "multi_path";
+
+export type MultiPathModeEnum = "repeat_flag" | "positional" | "joined";
+
+export interface RawArg {
+  flag: string;
+  type: ArgTypeEnum;
+  value?: any;
+  values?: any[];
+  minValue?: number | null;
+  maxValue?: number | null;
+  mustExist?: boolean | null;
+  mode?: MultiPathModeEnum;
+  separator?: string | null;
+  isUploadFile?: boolean;
+  enumValues?: string[] | null;
+}
+
+export interface RawEntry {
+  tool: ToolName;
+  args: RawArg[];
+  outputFilename: string;
+  timeout?: number | null;
+  captureStdout?: boolean;
+  checkVersion?: boolean;
+  minVersion?: [number, number] | [number, number, number] | null;
+}

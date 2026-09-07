@@ -1,0 +1,443 @@
+/* ==========================================================================
+   WORKBENCH MEDIAKIT — Design System Multi-Thèmes
+   Polices : Space Grotesk (Titres) · Inter (Corps) · JetBrains Mono (Données/CLI)
+   6 thèmes pilotés par [data-theme] sur <html> ou <body> :
+     1. "obsidian"  (sombre studio, violet profond — défaut)
+     2. "cyberpunk" (noir d'encre & vert hacker terminal)
+     3. "aurora"    (sarcelle nordique & bleu cyan)
+     4. "ember"     (sombre cuivré & ambre chaleureux)
+     5. "dracula"   (violet-bleuté & rose néon classique)
+     6. "daylight"  (thème clair clinique et épuré)
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* ==========================================================================
+   1. THÈMES
+   ========================================================================== */
+
+/* ---------- Thème 1 : Obsidian (Studio sombre par défaut) ---------- */
+:root,
+[data-theme="obsidian"] {
+  --bg-app: #090b10;
+  --bg-surface: #10131a;
+  --bg-surface-2: #161a24;
+  --bg-elevated: #1c2230;
+  --bg-hover: rgba(255, 255, 255, 0.05);
+
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+
+  --text-primary: #f3f4f8;
+  --text-secondary: #9aa2b4;
+  --text-tertiary: #60687c;
+
+  --accent: #7c6cf0;
+  --accent-strong: #9688ff;
+  --accent-soft: rgba(124, 108, 240, 0.15);
+  --accent-contrast: #ffffff;
+
+  --success: #10b981;
+  --success-soft: rgba(16, 185, 129, 0.15);
+  --warning: #f59e0b;
+  --warning-soft: rgba(245, 158, 11, 0.15);
+  --danger: #f43f5e;
+  --danger-soft: rgba(244, 63, 94, 0.15);
+  --info: #38bdf8;
+  --info-soft: rgba(56, 189, 248, 0.15);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.55);
+  --shadow-glow: 0 0 0 1px var(--accent-soft), 0 8px 32px rgba(124, 108, 240, 0.2);
+
+  color-scheme: dark;
+}
+
+/* ---------- Thème 2 : Cyberpunk (Terminal Hacker / Matrix) ---------- */
+[data-theme="cyberpunk"] {
+  --bg-app: #040806;
+  --bg-surface: #0a110d;
+  --bg-surface-2: #0f1a14;
+  --bg-elevated: #15241c;
+  --bg-hover: rgba(16, 185, 129, 0.08);
+
+  --border: rgba(16, 185, 129, 0.18);
+  --border-strong: rgba(16, 185, 129, 0.35);
+
+  --text-primary: #e6fffa;
+  --text-secondary: #6ee7b7;
+  --text-tertiary: #047857;
+
+  --accent: #00ff88;
+  --accent-strong: #34d399;
+  --accent-soft: rgba(0, 255, 136, 0.16);
+  --accent-contrast: #012111;
+
+  --success: #00ff88;
+  --success-soft: rgba(0, 255, 136, 0.15);
+  --warning: #facc15;
+  --warning-soft: rgba(250, 204, 21, 0.15);
+  --danger: #ff0055;
+  --danger-soft: rgba(255, 0, 85, 0.18);
+  --info: #00e5ff;
+  --info-soft: rgba(0, 229, 255, 0.15);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.8);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.7);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.85);
+  --shadow-glow: 0 0 0 1px var(--accent-soft), 0 0 24px rgba(0, 255, 136, 0.25);
+
+  color-scheme: dark;
+}
+
+/* ---------- Thème 3 : Aurora (Sarcelle boréale & Cyan) ---------- */
+[data-theme="aurora"] {
+  --bg-app: #071018;
+  --bg-surface: #0d1a24;
+  --bg-surface-2: #122432;
+  --bg-elevated: #182f42;
+  --bg-hover: rgba(45, 212, 191, 0.06);
+
+  --border: rgba(45, 212, 191, 0.12);
+  --border-strong: rgba(45, 212, 191, 0.25);
+
+  --text-primary: #edf8f8;
+  --text-secondary: #8fc2c6;
+  --text-tertiary: #527c82;
+
+  --accent: #14b8a6;
+  --accent-strong: #2dd4bf;
+  --accent-soft: rgba(20, 184, 166, 0.16);
+  --accent-contrast: #022421;
+
+  --success: #2dd4bf;
+  --success-soft: rgba(45, 212, 191, 0.15);
+  --warning: #f59e0b;
+  --warning-soft: rgba(245, 158, 11, 0.15);
+  --danger: #f43f5e;
+  --danger-soft: rgba(244, 63, 94, 0.15);
+  --info: #0ea5e9;
+  --info-soft: rgba(14, 165, 233, 0.15);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.55);
+  --shadow-glow: 0 0 0 1px var(--accent-soft), 0 8px 32px rgba(20, 184, 166, 0.22);
+
+  color-scheme: dark;
+}
+
+/* ---------- Thème 4 : Ember (Sombre chaud & Cuivre ambré) ---------- */
+[data-theme="ember"] {
+  --bg-app: #120e0b;
+  --bg-surface: #1a1410;
+  --bg-surface-2: #221b15;
+  --bg-elevated: #2b221a;
+  --bg-hover: rgba(251, 146, 60, 0.05);
+
+  --border: rgba(251, 146, 60, 0.12);
+  --border-strong: rgba(251, 146, 60, 0.24);
+
+  --text-primary: #fdf6ee;
+  --text-secondary: #b8a593;
+  --text-tertiary: #756353;
+
+  --accent: #ea580c;
+  --accent-strong: #f97316;
+  --accent-soft: rgba(234, 88, 12, 0.16);
+  --accent-contrast: #ffffff;
+
+  --success: #22c55e;
+  --success-soft: rgba(34, 197, 94, 0.15);
+  --warning: #eab308;
+  --warning-soft: rgba(234, 179, 8, 0.15);
+  --danger: #ef4444;
+  --danger-soft: rgba(239, 68, 68, 0.15);
+  --info: #38bdf8;
+  --info-soft: rgba(56, 189, 248, 0.15);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 0 0 1px var(--accent-soft), 0 8px 32px rgba(234, 88, 12, 0.22);
+
+  color-scheme: dark;
+}
+
+/* ---------- Thème 5 : Dracula (Bleuté & Violet Néon) ---------- */
+[data-theme="dracula"] {
+  --bg-app: #1b1827;
+  --bg-surface: #221e33;
+  --bg-surface-2: #2b2640;
+  --bg-elevated: #332d4c;
+  --bg-hover: rgba(255, 121, 198, 0.06);
+
+  --border: rgba(189, 147, 249, 0.14);
+  --border-strong: rgba(189, 147, 249, 0.28);
+
+  --text-primary: #f8f8f2;
+  --text-secondary: #b4a7d6;
+  --text-tertiary: #6b6285;
+
+  --accent: #ff79c6;
+  --accent-strong: #ff92d0;
+  --accent-soft: rgba(255, 121, 198, 0.16);
+  --accent-contrast: #1b1827;
+
+  --success: #50fa7b;
+  --success-soft: rgba(80, 250, 123, 0.15);
+  --warning: #f1fa8c;
+  --warning-soft: rgba(241, 250, 140, 0.15);
+  --danger: #ff5555;
+  --danger-soft: rgba(255, 85, 85, 0.16);
+  --info: #8be9fd;
+  --info-soft: rgba(139, 233, 253, 0.15);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.55);
+  --shadow-glow: 0 0 0 1px var(--accent-soft), 0 8px 32px rgba(255, 121, 198, 0.2);
+
+  color-scheme: dark;
+}
+
+/* ---------- Thème 6 : Daylight (Clair technique & épuré) ---------- */
+[data-theme="daylight"] {
+  --bg-app: #f4f6fa;
+  --bg-surface: #ffffff;
+  --bg-surface-2: #eaedf4;
+  --bg-elevated: #ffffff;
+  --bg-hover: rgba(15, 23, 42, 0.04);
+
+  --border: rgba(15, 23, 42, 0.08);
+  --border-strong: rgba(15, 23, 42, 0.16);
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-tertiary: #94a3b8;
+
+  --accent: #4f46e5;
+  --accent-strong: #4338ca;
+  --accent-soft: rgba(79, 70, 229, 0.1);
+  --accent-contrast: #ffffff;
+
+  --success: #059669;
+  --success-soft: rgba(5, 150, 105, 0.12);
+  --warning: #d97706;
+  --warning-soft: rgba(217, 119, 6, 0.12);
+  --danger: #e11d48;
+  --danger-soft: rgba(225, 29, 72, 0.12);
+  --info: #0284c7;
+  --info-soft: rgba(2, 132, 199, 0.12);
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.07);
+  --shadow-lg: 0 16px 48px rgba(15, 23, 42, 0.1);
+  --shadow-glow: 0 0 0 1px var(--accent-soft), 0 8px 32px rgba(79, 70, 229, 0.15);
+
+  color-scheme: light;
+}
+
+/* ==========================================================================
+   2. TOKENS GLOBAUX & MISE EN PAGE
+   ========================================================================== */
+:root {
+  --font-display: "Space Grotesk", "Inter", sans-serif;
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --radius-full: 9999px;
+
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 350ms;
+}
+
+/* ==========================================================================
+   3. RESET & STYLES GLOBAUX
+   ========================================================================== */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg-app);
+  background-image:
+    radial-gradient(ellipse 1000px 500px at 15% -5%, var(--accent-soft), transparent 60%),
+    radial-gradient(ellipse 800px 450px at 85% 0%, var(--accent-soft), transparent 55%);
+  background-attachment: fixed;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  transition: background-color var(--duration-slow) var(--ease), color var(--duration-slow) var(--ease);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+button, input, textarea, select {
+  font-family: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text-primary);
+}
+
+/* Scrollbars modernes */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: var(--radius-full); }
+::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ==========================================================================
+   4. COMPOSANTS RÉUTILISABLES (PRIMITIVES UI)
+   ========================================================================== */
+
+/* Cartes */
+.wb-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--duration-base) var(--ease), transform var(--duration-base) var(--ease), box-shadow var(--duration-base) var(--ease);
+}
+
+.wb-card--interactive:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+/* Boutons */
+.wb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 9px 18px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: all var(--duration-fast) var(--ease);
+  white-space: nowrap;
+}
+
+.wb-btn--primary {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+.wb-btn--primary:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+.wb-btn--primary:active {
+  transform: translateY(0);
+}
+
+.wb-btn--ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+}
+.wb-btn--ghost:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+/* Badges */
+.wb-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+.wb-badge--success { background: var(--success-soft); color: var(--success); }
+.wb-badge--warning { background: var(--warning-soft); color: var(--warning); }
+.wb-badge--danger  { background: var(--danger-soft);  color: var(--danger); }
+.wb-badge--info    { background: var(--info-soft);    color: var(--info); }
+.wb-badge--accent  { background: var(--accent-soft);  color: var(--accent-strong); }
+
+/* Inputs & Formulaires génériques */
+.wb-input,
+.wb-select {
+  width: 100%;
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  padding: 9px 14px;
+  font-size: 0.9rem;
+  transition: border-color var(--duration-fast) var(--ease), box-shadow var(--duration-fast) var(--ease);
+}
+
+.wb-input:focus,
+.wb-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: none;
+}
+
+/* Terminal Console (pour les WebSockets / run_log) */
+.wb-terminal {
+  background: #020406;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: #a7f3d0;
+  padding: var(--space-4);
+  overflow-y: auto;
+  max-height: 380px;
+}
+
+.wb-terminal__line--stderr {
+  color: var(--danger);
+}
+.wb-terminal__line--stdout {
+  color: #f1f5f9;
+}
+.wb-terminal__line--info {
+  color: var(--info);
+}

@@ -1,0 +1,129 @@
+/* ==========================================================================
+   TERMINAL LOG VIEWER — WORKBENCH MEDIAKIT
+   Piloté par les tokens globaux de index.css
+   ========================================================================== */
+
+.wb-terminal-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  width: 100%;
+}
+
+.wb-terminal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.wb-terminal-title-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.wb-terminal-title {
+  font-family: var(--font-display);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.wb-terminal-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--text-tertiary);
+  transition: background-color var(--duration-fast) var(--ease);
+}
+
+.wb-terminal-indicator[data-status="connected"] {
+  background: var(--success);
+  box-shadow: 0 0 8px var(--success);
+}
+
+.wb-terminal-indicator[data-status="connecting"] {
+  background: var(--warning);
+}
+
+.wb-terminal-indicator[data-status="error"] {
+  background: var(--danger);
+}
+
+.wb-terminal-indicator[data-status="finished"] {
+  background: var(--accent);
+}
+
+.wb-terminal-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.wb-terminal-btn {
+  padding: 4px 10px;
+  font-size: 0.75rem;
+}
+
+/* ─── Corps du terminal ─── */
+.wb-terminal-body {
+  background: #040608;
+  padding: var(--space-4);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  overflow-y: auto;
+  overflow-x: hidden;
+  text-align: left;
+}
+
+.wb-terminal-empty {
+  color: var(--text-tertiary);
+  font-style: italic;
+  padding: var(--space-4) 0;
+  text-align: center;
+}
+
+.wb-terminal-line {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+.wb-terminal-line--stdout {
+  color: var(--text-primary);
+}
+
+.wb-terminal-line--stderr {
+  color: var(--warning);
+}
+
+.wb-terminal-line--info {
+  color: var(--info);
+}
+
+.wb-terminal-time {
+  color: var(--text-tertiary);
+  font-size: 0.72rem;
+  user-select: none;
+}
+
+.wb-terminal-step {
+  color: var(--accent-strong);
+  font-weight: 600;
+  user-select: none;
+}
+
+.wb-terminal-text {
+  flex: 1;
+}

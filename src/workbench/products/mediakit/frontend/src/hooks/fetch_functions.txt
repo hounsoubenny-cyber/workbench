@@ -1,0 +1,19 @@
+import { WbConfig } from "@/types/types";
+import { getConfigRoute } from "./backend_routes";
+import { _FetchResult, _fetch_get, _fetch_post } from "./fetch_functions_bases";
+import { getConfig } from "./get_config";
+
+export const getBackendConfig = async (token: string = ""): Promise<_FetchResult<WbConfig>> => {
+    const conf = await getConfig();
+    return await _fetch_get<WbConfig>(`${conf.apiBaseUrl}/${getConfigRoute}`, null, token);
+}
+
+export const setBackendConfig = async (data: WbConfig, token: string = ""): Promise<_FetchResult<{success: boolean}>> => {
+    const conf = await getConfig();
+    return await _fetch_post<{success: boolean}>(
+      `${conf.apiBaseUrl}/${getConfigRoute}`, 
+      data as Record<string, any>, 
+      token,
+      false
+  );
+}

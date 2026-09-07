@@ -1,0 +1,84 @@
+name: 'Build Mediakit Release'
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'ubuntu-latest'
+            os_label: 'linux'
+            artifact_ext: ''
+          - platform: 'windows-latest'
+            os_label: 'windows'
+            artifact_ext: '.exe'
+          - platform: 'macos-latest'
+            os_label: 'macos'
+            artifact_ext: ''
+
+    runs-on: ${{ matrix.platform }}
+
+    env:
+      MEDIAKIT_DIR: src/workbench/products/mediakit
+      FRONTEND_DIR: src/workbench/products/mediakit/frontend
+
+    steps:
+      - name: Checkout du repo
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # ─── Frontend ───
+      - name: Installer et builder le frontend
+        working-directory: ${{ env.FRONTEND_DIR }}
+        run: |
+          bun install
+          bun run build
+
+      # ─── Backend Python ───
+      - name: Installer les dépendances Python (workbench + mediakit)
+        run: |
+          pip install -r requirements.txt
+          pip install -r ${{ env.MEDIAKIT_DIR }}/requirements.txt
+          pip install pyinstaller
+
+      - name: Compiler le backend avec PyInstaller (.spec)
+        working-directory: ${{ env.MEDIAKIT_DIR }}/api
+        run: pyinstaller mediakit.spec
+
+      # ─── Renommer pour un nom clair et unique par OS dans la Release ───
+      - name: Renommer le binaire pour la release (Unix)
+        if: matrix.platform != 'windows-latest'
+        run: |
+          mv ${{ env.MEDIAKIT_DIR }}/api/dist/mediakit-backend \
+             ${{ env.MEDIAKIT_DIR }}/api/dist/mediakit-${{ matrix.os_label }}
+          chmod +x ${{ env.MEDIAKIT_DIR }}/api/dist/mediakit-${{ matrix.os_label }}
+
+      - name: Renommer le binaire pour la release (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        run: |
+          mv ${{ env.MEDIAKIT_DIR }}/api/dist/mediakit-backend.exe \
+             ${{ env.MEDIAKIT_DIR }}/api/dist/mediakit-${{ matrix.os_label }}.exe
+
+      # ─── Publication sur la Release GitHub (brouillon) ───
+      - name: Publier le binaire sur la Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: |
+            ${{ env.MEDIAKIT_DIR }}/api/dist/mediakit-${{ matrix.os_label }}${{ matrix.artifact_ext }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

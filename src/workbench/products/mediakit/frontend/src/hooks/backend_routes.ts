@@ -1,0 +1,12 @@
+export const getConfigRoute = "config";
+export const setConfigRoute = "config";
+export const getCatalogRoute = "catalog";
+export const getSpecInfoRoute = (specId: string) => `spec/${encodeURIComponent(specId)}/info`;
+export const createJobRoute = "job/create";
+export const createAdvancedJobRoute = "job/advanced/create";
+export const getJobStatusRoute = "job/status";
+export const stopJobRoute = "job/stop";
+export const downloadFileRoute = "download";
+export const checkBinaryRoute = (toolName: string) => `binary/${encodeURIComponent(toolName)}/check`;
+export const statusRoute = "status";
+export const wsLogsRoute = (jobId: string) => `job/ws/logs?job_id=${encodeURIComponent(jobId)}`;

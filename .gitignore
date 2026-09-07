@@ -1,0 +1,54 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+.eggs/
+*.manifest
+.env
+.venv/
+venv/
+env/
+ENV/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Sorties PyInstaller (backend packagé) — ciblé, ne touche pas au dist/ du frontend
+**/api/build/
+**/api/dist/
+
+# --- Node / Bun / Frontend build ---
+node_modules/
+bun.lock
+package-lock.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Sidecars Tauri générés par le workflow (renommés avec target triple)
+binaries/
+
+# --- Configs sensibles / locaux ---
+*.toml.local
+.env.local
+.env.*.local
+
+# --- Fichiers générés à l'exécution (jobs, downloads, workdir sandboxé) ---
+**/downloads/
+**/workdir/
+*.log
+
+# --- Archives / exports temporaires ---
+*.zip
+*.tar.gz
+
+# --- OS / éditeurs ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp

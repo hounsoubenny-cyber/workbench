@@ -1,0 +1,298 @@
+/* ==========================================================================
+   CATALOG EXPLORER — WORKBENCH MEDIAKIT
+   ========================================================================== */
+
+.wb-catalog-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.wb-catalog-collapsed-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  color: var(--accent-strong);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease);
+}
+
+.wb-catalog-collapsed-bar:hover {
+  background: var(--accent-soft);
+}
+
+/* ─── Barre de Recherche ─── */
+.wb-catalog-topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.wb-catalog-search {
+  position: relative;
+  flex: 1;
+}
+
+.wb-catalog-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.wb-catalog-search-input {
+  padding-left: 36px;
+  font-size: 0.88rem;
+}
+
+.wb-catalog-collapse-btn {
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+/* ─── Boutons de Filtres ─── */
+.wb-catalog-filters {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.wb-catalog-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease);
+}
+
+.wb-catalog-filter-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.wb-catalog-filter-btn.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.wb-catalog-filter-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
+
+/* ─── Grille des cartes ─── */
+.wb-catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.wb-catalog-empty {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-7);
+  background: var(--bg-surface);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  color: var(--text-tertiary);
+  font-size: 0.9rem;
+}
+
+.wb-catalog-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  min-height: 160px;
+  transition: transform var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
+}
+
+.wb-catalog-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+}
+
+.wb-catalog-card.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.wb-catalog-card.is-disabled {
+  opacity: 0.6;
+  filter: grayscale(0.6);
+}
+
+.wb-catalog-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+
+.wb-catalog-card__icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+}
+
+.spec-icon--ffmpeg { color: var(--accent-strong); }
+.spec-icon--sox { color: var(--info); }
+.spec-icon--magick { color: var(--warning); }
+.spec-icon--pipeline { color: var(--success); }
+
+.wb-catalog-card__content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.wb-catalog-card__title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+  line-height: 1.35;
+}
+
+.wb-catalog-card__id {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+}
+
+.wb-catalog-card__unavailable {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: var(--space-2);
+  font-size: 0.74rem;
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.wb-catalog-card__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+.wb-catalog-card__btn-detail {
+  padding: 5px 10px;
+  font-size: 0.75rem;
+}
+
+.wb-catalog-card__btn-launch {
+  flex: 1;
+  padding: 5px 12px;
+  font-size: 0.78rem;
+}
+
+/* ─── Pagination ─── */
+.wb-catalog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.wb-catalog-pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.wb-catalog-page-btn {
+  padding: 4px 8px;
+}
+
+.wb-catalog-page-indicator {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.wb-catalog-per-page {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap; 
+}
+
+.wb-catalog-per-page-label {
+  white-space: nowrap;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.wb-catalog-per-page-input {
+  width: 60px; 
+  padding: 4px 8px;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  text-align: center;
+  border-radius: var(--radius-md);
+}
+
+/* Suppression propre des flèches (spin buttons) */
+.wb-catalog-per-page-input::-webkit-outer-spin-button,
+.wb-catalog-per-page-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.wb-catalog-per-page-input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}

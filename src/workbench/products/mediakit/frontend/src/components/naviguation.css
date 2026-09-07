@@ -1,0 +1,324 @@
+/* ==========================================================================
+   NAVIGATION — WORKBENCH MEDIAKIT
+   Barre latérale moderne, rétractable et pilotée par index.css
+   ========================================================================== */
+
+.nav-container {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+  position: relative;
+  background: var(--bg-app);
+}
+
+/* ─── Bouton Burger Mobile ─── */
+.burger-btn {
+  display: none;
+  position: fixed;
+  top: var(--space-3);
+  left: var(--space-3);
+  z-index: 1200;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  padding: 8px;
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+}
+
+.nav-overlay {
+  display: none;
+}
+
+/* ─── Barre Latérale (Vertical Nav) ─── */
+.vertical-nav {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  width: 250px;
+  flex-shrink: 0;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-3);
+  box-sizing: border-box;
+  z-index: 100;
+  transition: width var(--duration-base) var(--ease);
+}
+
+.vertical-nav.collapsed {
+  width: 74px;
+  padding: var(--space-4) var(--space-2);
+}
+
+/* ─── En-tête Logo ─── */
+.nav-header {
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-3);
+}
+
+.nav-logo-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  text-decoration: none;
+  color: var(--text-primary);
+}
+
+.nav-logo-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  border: 1px solid var(--border-strong);
+  color: var(--accent-strong);
+  flex-shrink: 0;
+}
+
+.nav-logo-text-group {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.logo-brand {
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  font-weight: 700;
+}
+
+.logo-product {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.logo-badge {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  color: var(--accent-strong);
+}
+
+/* ─── Menu & Liens ─── */
+.nav-menu {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1;
+}
+
+.nav-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.88rem;
+  font-weight: 500;
+  transition: all var(--duration-fast) var(--ease);
+}
+
+.nav-link:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.nav-link.active {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.nav-icon {
+  flex-shrink: 0;
+}
+
+.nav-name {
+  white-space: nowrap;
+  flex: 1;
+}
+
+.nav-item-badge {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border-strong);
+  color: var(--text-tertiary);
+}
+
+/* Tooltip en mode réduit (collapsed) */
+.nav-tooltip {
+  display: none;
+  position: absolute;
+  left: calc(100% + 12px);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  color: var(--text-primary);
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  font-size: 0.78rem;
+  white-space: nowrap;
+  box-shadow: var(--shadow-md);
+  z-index: 1000;
+}
+
+.vertical-nav.collapsed .nav-link:hover .nav-tooltip {
+  display: block;
+}
+
+/* ─── Pied de Navigation (Footer) ─── */
+.nav-footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+/* Bouton Config Rapide */
+.nav-quick-modal-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease);
+}
+
+.nav-quick-modal-btn:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+/* Voyants binaires CLI */
+.nav-binaries-status {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.nav-binaries-title {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+}
+
+.nav-binaries-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.binary-pill {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.vertical-nav.collapsed .nav-binaries-status {
+  display: none;
+}
+
+/* Bouton Réduire / Agrandir */
+.nav-collapse-btn-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  font-size: 0.78rem;
+  cursor: pointer;
+  padding: 6px var(--space-1);
+  border-radius: var(--radius-sm);
+  transition: color var(--duration-fast) var(--ease);
+}
+
+.nav-collapse-btn-footer:hover {
+  color: var(--text-primary);
+}
+
+/* ─── Conteneur de Contenu Principal ─── */
+.content-wrapper {
+  flex: 1;
+  min-width: 0;
+  overflow-x: hidden;
+  background: var(--bg-app);
+}
+
+/* ─── Responsive Mobile ─── */
+@media (max-width: 768px) {
+  .burger-btn {
+    display: flex;
+  }
+
+  .vertical-nav {
+    position: fixed;
+    top: 0;
+    left: -280px;
+    width: 260px;
+    height: 100vh;
+    box-shadow: var(--shadow-lg);
+    transition: left var(--duration-base) var(--ease);
+    z-index: 1100;
+  }
+
+  .vertical-nav.open {
+    left: 0;
+  }
+
+  .nav-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(4px);
+    z-index: 1050;
+  }
+
+  .content-wrapper {
+    padding-top: var(--space-8);
+  }
+}

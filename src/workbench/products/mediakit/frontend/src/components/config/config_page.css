@@ -1,0 +1,285 @@
+/* ==========================================================================
+   CONFIG PAGE — WORKBENCH MEDIAKIT
+   Design système vivant piloté par les variables de index.css
+   ========================================================================== */
+
+.wb-config-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4) var(--space-8);
+  font-family: var(--font-body);
+}
+
+/* ─── En-tête ─── */
+.wb-config-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.wb-config-header__titles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.wb-config-header__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: fit-content;
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  border: 1px solid var(--border-strong);
+  color: var(--accent-strong);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.wb-config-header__tag-emoji {
+  font-size: 0.85rem;
+}
+
+.wb-config-header__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 1.85rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.wb-config-header__emoji-title {
+  font-size: 1.6rem;
+}
+
+.wb-config-header__subtitle {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--text-secondary);
+  max-width: 620px;
+  line-height: 1.5;
+}
+
+.wb-config-header__refresh {
+  flex-shrink: 0;
+}
+
+/* ─── Formulaire & Grille ─── */
+.wb-config-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.wb-config-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: var(--space-4);
+}
+
+.wb-config-card {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-5);
+  background: var(--bg-surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  transition: border-color var(--duration-fast) var(--ease), box-shadow var(--duration-fast) var(--ease);
+}
+
+.wb-config-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+}
+
+.wb-config-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.wb-config-card__icon-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border-strong);
+  color: var(--accent-strong);
+  flex-shrink: 0;
+}
+
+.wb-config-card__badge-emoji {
+  font-size: 0.95rem;
+}
+
+.wb-config-card__title {
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.wb-config-card__desc {
+  font-size: 0.76rem;
+  color: var(--text-tertiary);
+}
+
+.wb-config-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* ─── Champs de saisie ─── */
+.wb-config-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.wb-config-field__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.wb-config-field__label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.wb-config-field__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+}
+
+.wb-config-field__preview {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.wb-config-field__input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.wb-config-input {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.wb-config-field__unit {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.wb-config-field__hint {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.wb-config-field__hint code {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+}
+
+/* ─── Barre d'action inférieure ─── */
+.wb-config-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.wb-config-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.8rem;
+  padding: 4px 10px;
+}
+
+.wb-config-footer__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.wb-config-save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ─── Rotation & Utilitaires ─── */
+.wb-spin {
+  animation: wb-spin-anim 0.9s linear infinite;
+}
+
+@keyframes wb-spin-anim {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 768px) {
+  .wb-config-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .wb-config-grid {
+    grid-template-columns: 1fr;
+  }
+  .wb-config-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+  .wb-config-footer__actions {
+    justify-content: flex-end;
+  }
+}

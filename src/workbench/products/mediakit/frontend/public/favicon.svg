@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+    <defs>
+        <!-- Dégradé du fond studio -->
+        <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#141824" />
+            <stop offset="100%" stop-color="#080a0f" />
+        </linearGradient>
+
+        <!-- Dégradé de la bordure lumineuse -->
+        <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#9688ff" stop-opacity="0.9" />
+            <stop offset="50%" stop-color="#38bdf8" stop-opacity="0.4" />
+            <stop offset="100%" stop-color="#00ff88" stop-opacity="0.8" />
+        </linearGradient>
+
+        <!-- Dégradé principal du symbole Mediakit -->
+        <linearGradient id="mediakitGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#7c6cf0" />
+            <stop offset="45%" stop-color="#38bdf8" />
+            <stop offset="100%" stop-color="#00ff88" />
+        </linearGradient>
+
+        <!-- Halo lumineux -->
+        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="10" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
+    </defs>
+
+    <!-- Fond carré arrondi (Squircle Studio) -->
+    <rect
+        x="24"
+        y="24"
+        width="464"
+        height="464"
+        rx="110"
+        fill="url(#bgGrad)"
+        stroke="url(#borderGrad)"
+        stroke-width="14"
+        />
+
+    <!-- Aura lumineuse interne -->
+    <circle cx="256" cy="256" r="130" fill="#7c6cf0" opacity="0.15" filter="url(#glow)" />
+
+    <!-- Symbole central : Le 'M' sculpté en prisme multimédia -->
+    <g filter="url(#glow)">
+        <!-- Pilier Gauche -->
+        <rect x="110" y="140" width="52" height="232" rx="26" fill="url(#mediakitGrad)" />
+
+        <!-- Pilier Droit -->
+        <rect x="350" y="140" width="52" height="232" rx="26" fill="url(#mediakitGrad)" />
+
+        <!-- Prisme Central formant le M et la flèche Play -->
+        <path
+            d="M162 165 L242 275 C249 285 263 285 270 275 L350 165 C359 152 346 136 332 148 L256 220 L180 148 C166 136 153 152 162 165 Z"
+            fill="url(#mediakitGrad)"
+            />
+
+        <!-- Point central / Noeud de calcul CLI -->
+        <polygon points="256,260 295,315 217,315" fill="#ffffff" opacity="0.95" />
+        <circle cx="256" cy="350" r="18" fill="#00ff88" />
+    </g>
+</svg>

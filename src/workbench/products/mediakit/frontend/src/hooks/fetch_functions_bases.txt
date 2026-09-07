@@ -1,0 +1,90 @@
+import { logError } from "./error_utils";
+
+export interface _FetchResult<T = Record<string, any>> {
+  ok: boolean;
+  response: T | Record<string, any> | null;
+  error: string | null;
+  status?: number | null;
+}
+
+interface Headers {
+  "Content-Type"?: string;
+  Authorization?: string;
+}
+
+const _fetch_post = async <T> (path: string, data: any, token: string = "", formData: boolean = false): Promise<_FetchResult<T>> => {
+    try{
+        const headers: Headers = {};
+    
+        if (token) headers.Authorization = `Bearer ${token}`;
+        let res;
+        if (formData){
+            res = await fetch(
+            path,
+                {
+                    "method": "POST",
+                    "body": data,
+                    "headers": headers as Record<string, string>
+                }
+            );
+        }
+        else {
+            headers["Content-Type"] = "application/json";
+
+            res = await fetch(
+                path,
+                {
+                    "method": "POST",
+                    "body": JSON.stringify(data),
+                    "headers": headers as Record<string, string>
+                }
+            );
+        }
+        return {
+            "ok": res.ok,
+            "response": await res.json(),
+            "error": null,
+            "status": res.status
+        }
+    }
+    catch(err){
+        let msg: string = logError(err);
+        console.log("Erreur POST : ", msg);
+        return {
+            "ok": false,
+            "response": null,
+            "error": msg,
+            "status": null
+        }
+    }
+};
+
+const _fetch_get = async <T> (path: string, query: string | null, token: string): Promise<_FetchResult<T>> => {
+    try{
+        const headers: Headers = token ? { Authorization: `Bearer ${token}` } : {};
+        let res = await fetch(
+            `${path}${query ? "?" + query : ""}`,
+            {
+                "method": "GET",
+                "headers": headers as Record<string, string>
+            }
+        );
+        return {
+            "ok": res.ok,
+            "response": await res.json(),
+            "error": null,
+            "status": res.status
+        }
+    }
+    catch(err){
+        let msg: string = logError(err);
+        console.log("Erreur GET : ", msg);
+        return {
+            "ok": false,
+            "response": null,
+            "error": msg,
+        }
+    }
+}
+
+export {_fetch_get, _fetch_post};

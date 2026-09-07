@@ -1,0 +1,5179 @@
+================./api/main_api.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Sep  4 14:31:19 2026
+
+@author: hounsousamuel
+"""
+
+import os
+import re
+import sys
+import logging
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+from workbench.api.create_routes import (  # noqa
+    create_router, start, stop, 
+    _server_error
+) 
+from workbench.api.config import StartConfig
+from workbench.core.orchestrator import MainEngine
+from workbench.wb_utils.job_file_cleaner import AsyncJobFileCleaner
+from workbench.products.mediakit.api.config import load_config, save_config, PORT
+from workbench.products.mediakit.specs.utils import get_catalog, get_spec, get_binary_config
+from workbench.wb_utils.error_mapper import map_orchestrator_error # noqa
+from workbench.core.subprocess.version_checker import (
+    get_binary_version_async,
+    BinaryNotFoundError
+)
+
+__version__ = "1.0.0"
+__author__ = "HOUNSOU Benny"
+
+if getattr(sys, 'frozen', False):
+    BASE_PATH = sys._MEIPASS
+    FRONTEND_DIR = os.path.abspath(os.path.join(
+        BASE_PATH,
+        "frontend"
+    ))
+else:
+    BASE_PATH = os.path.dirname(__file__)
+    FRONTEND_DIR = os.path.abspath(os.path.join(
+        BASE_PATH,
+        "..", "frontend"
+    ))
+    
+DIST_DIR = os.path.join(FRONTEND_DIR, "dist")
+ASSETS_DIR = os.path.join(DIST_DIR, "assets")
+INDEX_FILE = os.path.join(DIST_DIR, "index.html")
+FRONTEND_EXISTS = os.path.isdir(DIST_DIR) and os.path.isfile(INDEX_FILE)
+
+start_config = StartConfig(
+    server=None,
+    host="0.0.0.0",
+    port=PORT,
+    log_level=logging.ERROR,
+    access_log=False
+)
+
+config = load_config()
+orchestrator = MainEngine(config)
+job_file_cleaner = AsyncJobFileCleaner(default_ttl=config.file_ttl)
+
+def get_orchestrator(app: FastAPI) -> MainEngine:
+    return app.state.orchestrator
+
+def get_job_file_cleaner(app: FastAPI) -> AsyncJobFileCleaner:
+    return app.state.job_file_cleaner
+
+async def lifespan_start(app: FastAPI):
+    app.state.orchestrator = orchestrator
+    app.state.job_file_cleaner = job_file_cleaner
+    app.state.config = config
+    job_file_cleaner.start()
+    orchestrator.start()
+    print("Mediakit démarré !")
+    return
+
+async def lifespan_end(app: FastAPI):
+    print("Mediakit stoppé !")
+    await get_orchestrator(app).stop(stop_tasks=True)
+    await get_job_file_cleaner(app).stop()
+    return
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await lifespan_start(app)    
+    yield
+    await lifespan_end(app)
+    
+app = FastAPI(
+    version=__version__,
+    title="WorkBench Mediakit",
+    lifespan=lifespan,
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_methods=["POST", "GET", "HEAD"],
+    allow_origins=[
+        f"http://localhost:{PORT}",
+        f"http://127.0.0.1:{PORT}",
+        "http://127.0.0.1:3000",
+        "http://localhost:3000",
+        "https://fonts.googleapis.com",
+        "https://fonts.gstatic.com"
+    ]
+)
+
+if FRONTEND_EXISTS:
+    app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="frontend_assets")
+    
+@app.get("/api/binary/{name}/check")
+async def check_tool(request: Request, name: str):
+    try:
+        try:
+            config = get_binary_config(name)
+        except KeyError:
+            raise BinaryNotFoundError(name) from None
+            
+        if not name:
+            raise BinaryNotFoundError(name)
+            
+        await get_binary_version_async(
+            binary_path=name,
+            config=config,
+            check_marker=True,
+            check_version=False
+        )
+        return {"find": True}
+    
+    except HTTPException:
+        raise
+    
+    except Exception as e:
+        raise _server_error(e)
+    
+router = create_router(
+    orchestrator=orchestrator,
+    job_file_cleaner=job_file_cleaner,
+    show_specs_func=get_catalog,
+    get_spec_func=get_spec,
+    get_binary_config=get_binary_config,
+    save_config_func=save_config
+)
+app.include_router(
+    router=router,
+    prefix="/api",
+)
+ 
+@app.get("/api/status")
+def status():
+    return {"status": "ok"}
+
+
+@app.get("/")
+def home():
+    if not FRONTEND_EXISTS:
+        return {"status": "ok"}
+    
+    return FileResponse(INDEX_FILE)
+
+@app.get("/{full_path:path}")
+async def serve_frontend(full_path: str):
+    """Sert le frontend buildé (Vite) et gère le fallback SPA pour React Router.
+
+    Toute route qui ne correspond ni à l'API ni à un fichier statique
+    connu retombe sur index.html, pour laisser React Router gérer le
+    routing côté client.
+
+    Args:
+        full_path (str): Le chemin complet demandé.
+
+    Returns:
+        FileResponse: Le fichier demandé s'il existe dans dist/ (ex: favicon.ico
+            copié depuis public/ à la racine du build), sinon index.html.
+
+    Raises:
+        HTTPException: 404 si le frontend n'est pas buildé.
+    """
+    if not FRONTEND_EXISTS:
+        raise HTTPException(status_code=404, detail="Frontend non buildé")
+
+    # Fichiers copiés tels quels depuis public/ à la racine de dist/
+    # (favicon.ico, robots.txt, manifest.json, images référencées en chemin direct...)
+    candidate = os.path.join(DIST_DIR, full_path)
+    if full_path and os.path.isfile(candidate):
+        return FileResponse(candidate)
+
+    return FileResponse(INDEX_FILE)
+============================
+================./api/run_api.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Sep  4 14:31:25 2026
+@author: hounsousamuel
+"""
+import sys
+import time
+import webbrowser
+
+
+def run_api():
+    from workbench.products.mediakit.api.main_api import (
+        start, app, start_config
+    )
+    from workbench.wb_utils.signal_manager import signal_manager
+
+    thread, server = start(app, start_config=start_config)
+    thread.start()
+    time.sleep(2)
+
+    def signal_handler(sig, frame):
+        print('Signal envoyé : ', sig)
+        server.should_exit = True
+        thread.join(2)
+        sys.exit(0)
+
+    signal_manager(signal_handler)
+
+    while not getattr(server, "started", False):
+        continue
+
+    port = start_config.port
+    url = f"http://127.0.0.1:{port}"
+
+    print('API lancé à : ', time.ctime())
+    print(f'WORKBENCH_PORT={port}', flush=True)
+    print(f'🌐 Ouverture de {url} dans le navigateur par défaut...')
+
+    try:
+        webbrowser.open(url)
+    except Exception as e:
+        print(f"⚠️ Impossible d'ouvrir le navigateur automatiquement : {e!r}")
+        print(f"👉 Ouvrez manuellement : {url}")
+
+    start_time = time.time()
+    while True:
+        try:
+            time.sleep(1)
+            elapsed = time.time() - start_time
+            print(
+                f'API lancé depuis :  {elapsed:.2f} '
+                f'{"seconde" if elapsed < 2 else "secondes"} '
+                f'({elapsed / 60:.2f} {"minute" if elapsed / 60 < 2 else "minutes"})',
+                end="\r",
+            )
+        except KeyboardInterrupt:
+            print('Interruption , sortie !')
+            break
+        except Exception:
+            break
+
+    print('Fermeture API à : ', time.ctime())
+
+
+if __name__ == '__main__':
+    try:
+        import nest_asyncio
+        from workbench.products.mediakit.api.errors import StartAppError
+
+        nest_asyncio.apply()
+        run_api()
+
+    except StartAppError as e:
+        print(f"Erreur de démarrage: {e!r}")
+
+    except SystemExit:
+        pass
+
+    except Exception:
+        raise============================
+================./api/config.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Sep  4 14:48:58 2026
+
+@author: hounsousamuel
+"""
+
+from workbench.products.mediakit.api.env import CONFIG_PATH, PORT
+from workbench.api.config_manager import save_config as _save_config, load_config as _load_config
+from workbench.api.config import WbConfig
+
+class WbMediakitConfig(WbConfig):
+    pass
+
+def load_config() -> WbMediakitConfig:
+    return _load_config(CONFIG_PATH, WbMediakitConfig)
+
+def save_config(config: WbMediakitConfig):
+    return _save_config(config,CONFIG_PATH)
+    
+============================
+================./api/env.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Sep  4 14:51:30 2026
+
+@author: hounsousamuel
+"""
+
+import os
+import socket
+from dotenv import load_dotenv
+from workbench.products.mediakit.api.errors import StartAppError
+
+load_dotenv()
+
+CONFIG_FILE_KEY = "WB_MEDIAKIT_CONFIG_FILE"
+PORT_KEY = "WB_MEDIAKIT_PORT"
+AUTO_CHOOSE_KEY = "WB_MEDIAKIT_AUTO_CHOOSE"
+
+CONFIG_PATH = os.environ.get(CONFIG_FILE_KEY)
+PORT = os.environ.get(PORT_KEY)
+AUTO_CHOOSE = os.environ.get(AUTO_CHOOSE_KEY, "1").strip().lower() in ("1", "true", "True")
+
+def check_path(path: str):
+    if not path or not os.path.exists(path):
+        raise StartAppError("Config Path is missing")
+
+def check_port(port: int, check_is_open: bool = False):
+    if not port:
+        raise StartAppError("Port is missing")
+    
+    try:
+        port = int(port)
+    except ValueError:
+        raise StartAppError("Port is not available")
+    
+    sock = socket.socket()
+    r = sock.connect_ex(("127.0.0.1", port))
+    sock.close()
+    if r == 0:
+        raise StartAppError("Port is not open")
+     
+    return port
+
+def find_open_port():
+    import socket
+    with socket.socket() as s:
+        s.bind(("", 0))
+        return s.getsockname()[1]
+    
+check_path(CONFIG_PATH)
+if AUTO_CHOOSE:
+    PORT = find_open_port()
+else:
+    PORT = check_port(PORT, check_is_open=True)============================
+================./api/errors.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Sep  4 15:42:08 2026
+
+@author: hounsousamuel
+"""
+
+class StartAppError(Exception):
+    pass
+============================
+================./mk_utils/utils.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Sep  1 18:18:00 2026
+
+@author: hounsousamuel
+"""
+
+import os
+import magic
+
+def is_video_file(filepath: str) -> bool:
+    """Vérifie si le fichier est une vidéo"""
+    if not os.path.exists(filepath):
+        return False
+    
+    try:
+        mime = magic.from_file(filepath, mime=True)
+        return mime is not None and mime.startswith('video/')
+    except Exception:
+        return False
+
+def is_image_file(filepath: str) -> bool:
+    """Vérifie si le fichier est une image"""
+    if not os.path.exists(filepath):
+        return False
+    
+    try:
+        mime = magic.from_file(filepath, mime=True)
+        return mime is not None and mime.startswith('image/')
+    except Exception:
+        return False
+
+def is_audio_file(filepath: str) -> bool:
+    """Vérifie si le fichier est un fichier audio"""
+    if not os.path.exists(filepath):
+        return False
+    
+    try:
+        mime = magic.from_file(filepath, mime=True)
+        return mime is not None and mime.startswith('audio/')
+    except Exception:
+        return False
+
+============================
+================./specs/ffmpeg/base_spec.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Sep  1 18:14:25 2026
+
+@author: hounsousamuel
+"""
+
+from pathlib import Path
+from typing import ClassVar
+
+from workbench.specs.specs import ActionSpec, InputT
+from workbench.core.subprocess.engine import resolve_sandboxed_path
+from workbench.core.subprocess.wb_subprocess_types import Arg, EnumArg, BoolArg, ArgType, PatternArg
+from workbench.products.mediakit.specs.ffmpeg.base_model import BaseFfmpegActionInput
+from workbench.products.mediakit.mk_utils.utils import is_video_file
+from workbench.core.subprocess.version_checker import (
+    Config as BinVersionCheckerConfig,
+)
+
+FFMPEG_CONFIG = BinVersionCheckerConfig(**{'cmd': '-version', 'marker': 'ffmpeg version', 'tool_name': 'ffmpeg'})
+SAFE_WEB_VIDEO_FILTER = "scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p"
+
+class IsNotVideoFile(Exception):
+    pass
+
+
+class FfmpegSpec(ActionSpec[InputT]):
+    tool: str = "ffmpeg"
+    SECURITY_ARGS: ClassVar[list] = [
+        EnumArg(flag="-protocol_whitelist", value="file", enum_values=["file"]),
+        BoolArg(flag="-y", value=True), # Auto accet, evite de loquer stdin
+    ]
+    binary_config: BinVersionCheckerConfig = FFMPEG_CONFIG
+    auto_even_dimensions: bool = False
+    
+    def full_args(self, user_input: InputT) -> list[Arg]:
+        """
+        ⚠️ Toujours utiliser full_args() pour construire la commande finale,
+        jamais build_args() directement — sinon les args de sécurité
+        (protocol_whitelist) ne sont pas inclus.
+        """
+        raw_args = self.build_args(user_input)
+
+        # Si l'option n'est pas activée, comportement normal
+        if not self.auto_even_dimensions:
+            return [*self.SECURITY_ARGS, *raw_args]
+
+        # ─── Injection intelligente de l'arrondi pair ───
+        modified_args = []
+        has_vf = False
+
+        for arg in raw_args:
+            if getattr(arg, "flag", "") == "-vf" and hasattr(arg, "value"):
+                has_vf = True
+                val = str(arg.value)
+                # On ne double pas si déjà présent
+                if "trunc(iw/2)*2" not in val:
+                    val = f"{val},{SAFE_WEB_VIDEO_FILTER}"
+                modified_args.append(arg.model_copy(update={"value": val}))
+            else:
+                modified_args.append(arg)
+
+        # Si aucun -vf n'existait, on l'injecte juste avant le fichier de sortie
+        if not has_vf:
+            output_idx = len(modified_args)
+            for i in range(len(modified_args) - 1, -1, -1):
+                a = modified_args[i]
+                if a.type == ArgType.PATH and not getattr(a, "must_exist", False) and not a.flag:
+                    output_idx = i
+                    break
+            safe_vf_arg = PatternArg(flag="-vf", value=SAFE_WEB_VIDEO_FILTER)
+            modified_args.insert(output_idx, safe_vf_arg)
+
+        return [*self.SECURITY_ARGS, *modified_args]
+
+    def validate_args(self, user_input: BaseFfmpegActionInput, workdir: Path) -> None:
+        if not isinstance(user_input, BaseFfmpegActionInput):
+            raise ValueError("Input should be a valid BaseFfmpegActionInput !")
+
+        if self.validate_arg:
+            resolved = resolve_sandboxed_path(user_input.input_file, workdir)
+            if not is_video_file(str(resolved)):
+                raise IsNotVideoFile(
+                    f"{user_input.input_file} ne semble pas être un fichier vidéo"
+                )============================
+================./specs/ffmpeg/base_model.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Sep  1 18:24:36 2026
+
+@author: hounsousamuel
+"""
+
+from typing import Literal, List
+from pydantic import BaseModel, Field, model_validator
+from workbench.specs.uploads import UploadRef
+
+# =============================================================================
+# SOCLE DE BASE
+# =============================================================================
+
+class BaseFfmpegActionInput(BaseModel):
+    """Input commun pour toute action FFmpeg prenant au moins un fichier source."""
+    input_file: str = UploadRef(description="Fichier vidéo ou audio source principal")
+
+
+_RESOLUTIONS = ["1920x1080", "1280x720", "854x480", "640x360", "426x240"]
+
+_VALID_VIDEO_CODECS_BY_FORMAT = {
+    "mp4": ["libx264", "libx265"],
+    "mkv": ["libx264", "libx265", "vp9"],
+    "webm": ["vp9"],
+    "avi": ["libx264"],
+    "mov": ["libx264", "libx265"],
+}
+
+_AUDIO_CODEC_BY_FORMAT = {
+    "mp4": "aac",
+    "mkv": "aac",
+    "webm": "libopus",
+    "avi": "mp3",
+    "mov": "aac",
+}
+
+
+# =============================================================================
+# A. TRANSCODAGE & CONTENEURS
+# =============================================================================
+
+class ConvertVideoInput(BaseFfmpegActionInput):
+    output_format: Literal["mp4", "webm", "mkv", "avi", "mov"] = "mp4"
+    codec: Literal["libx264", "libx265", "vp9"] = "libx264"
+
+    @model_validator(mode="after")
+    def check_codec_compatible(self) -> "ConvertVideoInput":
+        allowed = _VALID_VIDEO_CODECS_BY_FORMAT.get(self.output_format, [])
+        if self.codec not in allowed:
+            raise ValueError(f"Codec '{self.codec}' incompatible avec '{self.output_format}' (autorisés : {allowed})")
+        return self
+
+
+class VideoToGifInput(BaseFfmpegActionInput):
+    fps: int = Field(default=12, ge=5, le=30, description="Cadence d'images (FPS) du GIF")
+    width: int = Field(default=480, ge=160, le=1080, description="Largeur max en pixels")
+    duration_s: float = Field(default=5.0, ge=0.5, le=30.0, description="Durée max du GIF en secondes")
+
+
+class FaststartWebInput(BaseFfmpegActionInput):
+    pass
+
+
+# =============================================================================
+# B. COMPRESSION & POIDS
+# =============================================================================
+
+class CompressCrfInput(BaseFfmpegActionInput):
+    crf: int = Field(default=24, ge=18, le=35, description="Facteur CRF (18=quasi sans perte, 28=léger, 32=très compressé)")
+    preset: Literal["ultrafast", "fast", "medium", "slow", "veryslow"] = "medium"
+
+
+class CompressTargetSizeInput(BaseFfmpegActionInput):
+    target_size_mb: float = Field(default=8.0, ge=1.0, le=500.0, description="Poids cible souhaité en mégaoctets")
+    duration_seconds: float = Field(..., gt=0.0, description="Durée exacte de la vidéo en secondes pour calcul du bitrate")
+
+
+# =============================================================================
+# C. EXTRACTION
+# =============================================================================
+
+class ExtractAudioLosslessInput(BaseFfmpegActionInput):
+    pass
+
+
+class ExtractAudioConvertInput(BaseFfmpegActionInput):
+    output_format: Literal["mp3", "wav", "aac", "flac", "ogg"] = "mp3"
+    bitrate: Literal["128k", "192k", "256k", "320k"] = "192k"
+
+
+class ExtractFrameInput(BaseFfmpegActionInput):
+    timestamp_seconds: float = Field(default=1.0, ge=0.0, description="Moment de la capture en secondes")
+    output_format: Literal["png", "jpg"] = "png"
+
+
+class ExtractFramesSeriesInput(BaseFfmpegActionInput):
+    every_n_seconds: int = Field(default=5, ge=1, le=120, description="Intervalle de capture en secondes")
+    output_format: Literal["png", "jpg"] = "jpg"
+
+
+class ExtractSubtitlesInput(BaseFfmpegActionInput):
+    output_format: Literal["srt", "vtt"] = "srt"
+
+
+# =============================================================================
+# D. DÉCOUPE, VITESSE & TIMING
+# =============================================================================
+
+class TrimVideoInput(BaseFfmpegActionInput):
+    start_seconds: float = Field(default=0.0, ge=0.0, description="Début du segment en secondes")
+    duration_seconds: float = Field(default=10.0, gt=0.01, description="Durée du segment en secondes")
+
+
+class SpeedVideoInput(BaseFfmpegActionInput):
+    speed_factor: Literal["0.25", "0.5", "0.75", "1.25", "1.5", "2.0"] = "1.5"
+
+
+class ReverseVideoInput(BaseFfmpegActionInput):
+    pass
+
+
+class ChangeFpsInput(BaseFfmpegActionInput):
+    fps: Literal[15, 24, 25, 30, 60] = 30
+
+
+# =============================================================================
+# E. GÉOMÉTRIE, CADRAGE & RÉSEAUX SOCIAUX
+# =============================================================================
+
+class ResizeVideoInput(BaseFfmpegActionInput):
+    resolution: Literal["1920x1080", "1280x720", "854x480", "640x360", "426x240"] = "1280x720"
+
+
+class CropVideoInput(BaseFfmpegActionInput):
+    width: int = Field(default=640, ge=50, description="Largeur du rectangle découpé")
+    height: int = Field(default=360, ge=50, description="Hauteur du rectangle découpé")
+    x: int = Field(default=0, ge=0, description="Position X du coin supérieur gauche")
+    y: int = Field(default=0, ge=0, description="Position Y du coin supérieur gauche")
+
+
+class SocialVerticalInput(BaseFfmpegActionInput):
+    mode: Literal["crop_center", "blur_background"] = "blur_background"
+
+
+class RotateVideoInput(BaseFfmpegActionInput):
+    rotation: Literal["90_cw", "90_ccw", "180"] = "90_cw"
+
+
+class FlipVideoInput(BaseFfmpegActionInput):
+    direction: Literal["horizontal", "vertical"] = "horizontal"
+
+
+class PadLetterboxInput(BaseFfmpegActionInput):
+    target_aspect: Literal["16:9", "4:3", "1:1"] = "16:9"
+    color: Literal["black", "white"] = "black"
+
+
+# =============================================================================
+# F. TRAITEMENT AUDIO DANS LA VIDÉO
+# =============================================================================
+
+class MuteVideoInput(BaseFfmpegActionInput):
+    pass
+
+
+class BoostVolumeInput(BaseFfmpegActionInput):
+    volume_multiplier: float = Field(default=1.5, ge=0.1, le=5.0, description="1.0 = original, 2.0 = double, 0.5 = moitié")
+
+
+class NormalizeLoudnessInput(BaseFfmpegActionInput):
+    target_lufs: float = Field(default=-16.0, ge=-24.0, le=-14.0, description="Niveau sonore cible (-16 YouTube/Web, -23 Broadcast TV)")
+
+
+class AudioFadeInput(BaseFfmpegActionInput):
+    fade_in_s: float = Field(default=2.0, ge=0.0)
+    fade_out_s: float = Field(default=2.0, ge=0.0)
+
+
+class FixAudioDelayInput(BaseFfmpegActionInput):
+    delay_ms: int = Field(default=200, ge=-5000, le=5000, description="Décalage en millisecondes (positif ou négatif)")
+
+
+class ReplaceAudioInput(BaseFfmpegActionInput):
+    new_audio_file: str = UploadRef(description="Nouvelle piste audio remplaçant l'originale")
+
+
+class AddBackgroundMusicInput(BaseFfmpegActionInput):
+    music_file: str = UploadRef(description="Fichier musical de fond")
+    music_volume: float = Field(default=0.2, ge=0.05, le=1.0, description="Volume de la musique (0.2 = 20%)")
+
+
+# =============================================================================
+# G. INCRUSTATIONS & EFFETS VISUELS
+# =============================================================================
+
+class AddWatermarkInput(BaseFfmpegActionInput):
+    watermark_image: str = UploadRef(description="Image PNG/JPG avec transparence recommandée")
+    position: Literal["top_left", "top_right", "bottom_left", "bottom_right", "center"] = "bottom_right"
+    margin_px: int = Field(default=15, ge=0, le=100)
+
+
+class BurnSubtitlesInput(BaseFfmpegActionInput):
+    subtitles_file: str = UploadRef(description="Fichier de sous-titres (.srt ou .vtt)")
+
+
+class AdjustColorEqInput(BaseFfmpegActionInput):
+    brightness: float = Field(default=0.0, ge=-0.5, le=0.5, description="Luminosité (-0.5 à +0.5)")
+    contrast: float = Field(default=1.0, ge=0.2, le=2.0, description="Contraste (1.0 = normal)")
+    saturation: float = Field(default=1.0, ge=0.0, le=3.0, description="Saturation (0.0 = N&B, 1.0 = normal)")
+
+
+class BlurVideoInput(BaseFfmpegActionInput):
+    intensity: int = Field(default=5, ge=1, le=20, description="Rayon du flou gaussien")
+
+
+# =============================================================================
+# H. ASSEMBLAGE & MULTI-FICHIERS
+# =============================================================================
+
+class ConcatVideosInput(BaseModel):
+    inputs: List[str] = UploadRef(description="Liste ordonnée des vidéos à assembler")
+
+
+class ImagePlusAudioInput(BaseModel):
+    image_file: str = UploadRef(description="Image de couverture (statique)")
+    audio_file: str = UploadRef(description="Piste audio (podcasts, musique)")============================
+================./specs/ffmpeg/actions/__init__.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Sep  1 22:30:16 2026
+
+@author: hounsousamuel
+"""
+
+"""
+Workbench Mediakit — Spécifications et catalogue complet FFmpeg.
+"""
+
+from workbench.products.mediakit.specs.ffmpeg.actions.actions_convert import FFMPEG_CONVERT_ACTIONS
+from workbench.products.mediakit.specs.ffmpeg.actions.actions_extract import FFMPEG_EXTRACT_ACTIONS
+from workbench.products.mediakit.specs.ffmpeg.actions.actions_timing import FFMPEG_TIMING_ACTIONS
+from workbench.products.mediakit.specs.ffmpeg.actions.actions_geometry import FFMPEG_GEOMETRY_ACTIONS
+from workbench.products.mediakit.specs.ffmpeg.actions.actions_audio import FFMPEG_AUDIO_ACTIONS
+from workbench.products.mediakit.specs.ffmpeg.actions.actions_effects import FFMPEG_EFFECTS_ACTIONS
+from workbench.products.mediakit.specs.ffmpeg.actions.actions_multi import FFMPEG_MULTI_ACTIONS
+from workbench.wb_utils.merger import merge
+
+# ─── DICT 1 : MERGE TOTAL À PLAT (Recherche O(1) rapide par action_id) ───────
+FFMPEG_ACTIONS = merge(
+    FFMPEG_CONVERT_ACTIONS,
+    FFMPEG_EXTRACT_ACTIONS,
+    FFMPEG_TIMING_ACTIONS,
+    FFMPEG_GEOMETRY_ACTIONS,
+    FFMPEG_AUDIO_ACTIONS,
+    FFMPEG_EFFECTS_ACTIONS,
+    FFMPEG_MULTI_ACTIONS,
+)
+
+
+# ─── DICT 2 : CATALOGUE GRANULAIRE STRUCTURÉ (Pour les onglets et l'UI) ──────
+FFMPEG_CATALOG = {
+    "all_cat": FFMPEG_ACTIONS,
+    "categories": {
+        "convert": {
+            "description": (
+                "Transcodage de formats vidéo (MP4, WebM, MKV, AVI, MOV), compression "
+                "intelligente par CRF ou taille cible en Mo, optimisation du streaming web (faststart) "
+                "et création de GIF animés haute fidélité avec palette 256 couleurs."
+            ),
+            "values": FFMPEG_CONVERT_ACTIONS,
+        },
+        "extract": {
+            "description": (
+                "Extraction de flux spécifiques : capture de miniatures uniques ou en série (planches contact), "
+                "démultiplexage audio sans perte ou avec conversion (MP3, WAV, AAC, FLAC), et extraction de "
+                "pistes de sous-titres intégrées (SRT, VTT)."
+            ),
+            "values": FFMPEG_EXTRACT_ACTIONS,
+        },
+        "timing": {
+            "description": (
+                "Gestion du temps et de la cadence : découpage rapide sans ré-encodage (calé sur keyframes) "
+                "ou précis à la frame près, accélération et ralentissement synchronisés audio/vidéo, inversion "
+                "de lecture (reverse) et conversion du framerate (FPS)."
+            ),
+            "values": FFMPEG_TIMING_ACTIONS,
+        },
+        "geometry": {
+            "description": (
+                "Transformation spatiale et cadrage : redimensionnement (1080p, 720p, etc.), recadrage libre "
+                "(crop rectangulaire), adaptation aux formats verticaux 9:16 pour les réseaux sociaux (TikTok, Reels, "
+                "Shorts avec flou d'arrière-plan), rotations et effets miroir."
+            ),
+            "values": FFMPEG_GEOMETRY_ACTIONS,
+        },
+        "audio": {
+            "description": (
+                "Traitement de la bande sonore dans la vidéo : coupure du son (mute), amplification et "
+                "atténuation de volume, normalisation broadcast EBU R128 (standard YouTube/Spotify), fondus audio, "
+                "correction de désynchronisation voix/image et remplacement complet de la piste audio."
+            ),
+            "values": FFMPEG_AUDIO_ACTIONS,
+        },
+        "effects": {
+            "description": (
+                "Filtres et incrustations visuelles : ajout de filigranes ou logos PNG transparents avec positionnement "
+                "paramétrable, incrustation de sous-titres en dur dans l'image (hardsub), ajustements colorimétriques "
+                "(luminosité, contraste, saturation) et flou d'anonymisation."
+            ),
+            "values": FFMPEG_EFFECTS_ACTIONS,
+        },
+        "multi": {
+            "description": (
+                "Opérations multi-fichiers et assemblage : concaténation de plusieurs clips vidéo dans un ordre "
+                "défini (avec ou sans ré-encodage) et génération de vidéos de type podcast à partir d'une image fixe "
+                "et d'un fichier audio."
+            ),
+            "values": FFMPEG_MULTI_ACTIONS,
+        },
+    },
+}
+
+
+__all__ = [
+    "FFMPEG_ACTIONS",
+    "FFMPEG_CATALOG",
+]============================
+================./specs/ffmpeg/actions/action.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Sep  1 19:00:00 2026
+
+@author: hounsousamuel
+"""
+
+
+import sys
+import inspect
+from workbench.specs.specs import ActionSpec
+from workbench.products.mediakit.specs.ffmpeg.base_spec import FfmpegSpec
+from workbench.core.subprocess.wb_subprocess_types import PathArg, EnumArg, BoolArg, FloatArg, IntArg
+from workbench.specs.registry import collect_specs
+from workbench.products.mediakit.specs.ffmpeg.base_model import (
+    ConvertVideoInput, ExtractAudioInput, TrimVideoInput,
+    ResizeVideoInput, ExtractFrameInput, _AUDIO_CODEC_BY_FORMAT as _CONVERT_AUDIO_CODEC_BY_FORMAT,
+)
+
+MIN_FFMPEG_VERSION = (5, 0)
+
+_AUDIO_CODEC_BY_FORMAT = {
+    "mp3": "libmp3lame",
+    "wav": "pcm_s16le",
+    "aac": "aac",
+}
+
+_RESOLUTIONS = ["1920x1080", "1280x720", "854x480"]
+
+convert_video = FfmpegSpec[ConvertVideoInput](
+    id="convert_video",
+    label="Convertir une vidéo",
+    tool="ffmpeg",
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        EnumArg(flag="-c:v", value=u.codec, enum_values=["libx264", "libx265", "vp9"]),
+        EnumArg(
+            flag="-c:a",
+            value=_CONVERT_AUDIO_CODEC_BY_FORMAT[u.output_format],
+            enum_values=list(_CONVERT_AUDIO_CODEC_BY_FORMAT.values()),
+        ),
+        PathArg(value=f"converted.{u.output_format}"),
+    ],
+    output_filename_template=lambda u: f"converted.{u.output_format}",
+    input_cls=ConvertVideoInput
+)
+
+
+extract_audio = FfmpegSpec[ExtractAudioInput](
+    id="extract_audio",
+    label="Extraire l'audio d'une vidéo",
+    tool="ffmpeg",
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        BoolArg(flag="-vn", value=True),  # pas de flux vidéo dans la sortie
+        EnumArg(
+            flag="-acodec",
+            value=_AUDIO_CODEC_BY_FORMAT[u.output_format],
+            enum_values=list(_AUDIO_CODEC_BY_FORMAT.values()),
+        ),
+        PathArg(value=f"audio.{u.output_format}"),
+    ],
+    output_filename_template=lambda u: f"audio.{u.output_format}",
+    input_cls=ExtractFrameInput,
+)
+
+
+# Trim rapide via -c copy : ne re-encode pas, donc quasi instantané, mais la
+# coupe se cale sur le keyframe le plus proche (précision approximative).
+trim_video_with_copy = FfmpegSpec[TrimVideoInput](
+    id="trim_video_with_copy",
+    label="Découper un extrait vidéo",
+    tool="ffmpeg",
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    build_args=lambda u: [
+        FloatArg(flag="-ss", value=u.start_seconds, min_value=0),
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        FloatArg(flag="-t", value=u.duration_seconds, min_value=0.01),
+        EnumArg(flag="-c", value="copy", enum_values=["copy"]),
+        PathArg(value="trimmed.mp4"),
+    ],
+    output_filename_template="trimmed.mp4",
+    input_cls=TrimVideoInput
+)
+
+trim_video_no_copy = FfmpegSpec[TrimVideoInput](
+    id="trim_video_no_copy",
+    label="Découper un extrait vidéo",
+    tool="ffmpeg",
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    build_args=lambda u: [
+        FloatArg(flag="-ss", value=u.start_seconds, min_value=0),
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        FloatArg(flag="-t", value=u.duration_seconds, min_value=0.01),
+        PathArg(value="trimmed.mp4"),
+    ],
+    output_filename_template="trimmed.mp4",
+    input_cls=TrimVideoInput
+)
+
+
+resize_video = FfmpegSpec[ResizeVideoInput](
+    id="resize_video",
+    label="Redimensionner une vidéo",
+    tool="ffmpeg",
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        EnumArg(
+            flag="-vf",
+            value=f"scale={u.resolution.replace('x', ':')}",
+            enum_values=[f"scale={r.replace('x', ':')}" for r in _RESOLUTIONS],
+        ),
+        PathArg(value="resized.mp4"),
+    ],
+    output_filename_template="resized.mp4",
+    input_cls=ResizeVideoInput
+)
+
+
+extract_frame = FfmpegSpec[ExtractFrameInput](
+    id="extract_frame",
+    label="Extraire une image d'une vidéo",
+    tool="ffmpeg",
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    build_args=lambda u: [
+        FloatArg(flag="-ss", value=u.timestamp_seconds, min_value=0),
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        IntArg(flag="-frames:v", value=1, min_value=1, max_value=1),
+        PathArg(value=f"frame.{u.output_format}"),
+    ],
+    output_filename_template=lambda u: f"frame.{u.output_format}",
+    input_cls=ExtractFrameInput
+)
+
+
+FFMPEG_ACTIONS = collect_specs(__name__)============================
+================./specs/ffmpeg/actions/actions_convert.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Sep  3 23:03:38 2026
+
+@author: hounsousamuel
+"""
+
+"""
+Workbench Mediakit — Actions FFmpeg : Conversion, Compression et Formats Web.
+
+Ce fichier gère les conversions de conteneurs, l'optimisation pour le Web (streaming instantané), 
+la compression à qualité constante (CRF), la compression pour respecter une taille maximale en Mo,
+ et la création de GIF haute fidélité (avec génération de palette 256 couleurs).
+"""
+
+from workbench.specs.registry import collect_specs
+from workbench.core.subprocess.wb_subprocess_types import (
+    PathArg, EnumArg, IntArg, FloatArg, PatternArg, BoolArg
+)
+from workbench.products.mediakit.specs.ffmpeg.base_spec import FfmpegSpec
+from workbench.products.mediakit.specs.ffmpeg.base_model import (
+    ConvertVideoInput, CompressCrfInput, CompressTargetSizeInput,
+    VideoToGifInput, FaststartWebInput, _AUDIO_CODEC_BY_FORMAT
+)
+
+MIN_FFMPEG_VERSION = (4, 0)
+
+
+# ─── 1. CONVERTIR LE FORMAT / CONTENEUR ──────────────────────────────────────
+convert_format_spec = FfmpegSpec[ConvertVideoInput](
+    id="ffmpeg_convert_format",
+    auto_even_dimensions=True,
+    label="Convertir le format vidéo (MP4, WebM, MKV, AVI, MOV)",
+    input_cls=ConvertVideoInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template=lambda u: f"converted.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        EnumArg(flag="-c:v", value=u.codec, enum_values=["libx264", "libx265", "vp9"]),
+        EnumArg(
+            flag="-c:a",
+            value=_AUDIO_CODEC_BY_FORMAT.get(u.output_format, "aac"),
+            enum_values=["aac", "libopus", "mp3"]
+        ),
+        PathArg(value=f"converted.{u.output_format}")
+    ]
+)
+
+
+# ─── 2. COMPRESSION QUALITÉ CONSTANTE (CRF) ──────────────────────────────────
+compress_crf_spec = FfmpegSpec[CompressCrfInput](
+    id="ffmpeg_compress_crf",
+    auto_even_dimensions=True,
+    label="Compresser une vidéo (optimisation du poids via CRF)",
+    input_cls=CompressCrfInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="compressed.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        EnumArg(flag="-c:v", value="libx264", enum_values=["libx264"]),
+        IntArg(flag="-crf", value=u.crf, min_value=18, max_value=35),
+        EnumArg(
+            flag="-preset",
+            value=u.preset,
+            enum_values=["ultrafast", "fast", "medium", "slow", "veryslow"]
+        ),
+        EnumArg(flag="-c:a", value="aac", enum_values=["aac"]),
+        EnumArg(flag="-b:a", value="128k", enum_values=["128k"]),
+        PathArg(value="compressed.mp4")
+    ]
+)
+
+
+# ─── 3. COMPRESSION POUR TAILLE CIBLE EN MO ──────────────────────────────────
+def _calc_target_bitrate_bps(u: CompressTargetSizeInput) -> int:
+    """Calcule le bitrate vidéo exact en bits/sec pour respecter le poids cible en Mo."""
+    target_kbits = u.target_size_mb * 8192
+    audio_bitrate_kbps = 128
+    video_bitrate_kbps = max(64, int((target_kbits / u.duration_seconds) - audio_bitrate_kbps))
+    return video_bitrate_kbps * 1000
+
+
+compress_target_size_spec = FfmpegSpec[CompressTargetSizeInput](
+    id="ffmpeg_compress_target_size",
+    auto_even_dimensions=True,
+    label="Compresser pour atteindre un poids cible (ex: <8 Mo Discord, <25 Mo Mail)",
+    input_cls=CompressTargetSizeInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="target_size.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        EnumArg(flag="-c:v", value="libx264", enum_values=["libx264"]),
+        IntArg(flag="-b:v", value=_calc_target_bitrate_bps(u), min_value=64000),
+        EnumArg(flag="-c:a", value="aac", enum_values=["aac"]),
+        EnumArg(flag="-b:a", value="128k", enum_values=["128k"]),
+        PathArg(value="target_size.mp4")
+    ]
+)
+
+
+# ─── 4. CRÉATION DE GIF ANIMÉ (HAUTE QUALITÉ AVEC PALETTE) ───────────────────
+video_to_gif_spec = FfmpegSpec[VideoToGifInput](
+    id="ffmpeg_video_to_gif",
+    label="Créer un GIF animé fluide (génération de palette 256 couleurs)",
+    input_cls=VideoToGifInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="animated.gif",
+    build_args=lambda u: [
+        FloatArg(flag="-t", value=u.duration_s, min_value=0.5, max_value=30.0),
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        PatternArg(
+            flag="-vf",
+            value=f"fps={u.fps},scale={u.width}:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse"
+        ),
+        PathArg(value="animated.gif")
+    ]
+)
+
+
+# ─── 5. OPTIMISATION STREAMING WEB (FASTSTART) ───────────────────────────────
+faststart_web_spec = FfmpegSpec[FaststartWebInput](
+    id="ffmpeg_faststart_web",
+    label="Optimiser pour le streaming web (déplacement moov atom pour lecture instantanée)",
+    input_cls=FaststartWebInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="web_ready.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        EnumArg(flag="-c", value="copy", enum_values=["copy"]),
+        PatternArg(flag="-movflags", value="+faststart"),
+        PathArg(value="web_ready.mp4")
+    ]
+)
+
+
+# =============================================================================
+# COLLECTE AUTOMATIQUE DU MODULE
+# =============================================================================
+FFMPEG_CONVERT_ACTIONS = collect_specs(__name__)
+__all__ = ["FFMPEG_CONVERT_ACTIONS"]============================
+================./specs/ffmpeg/actions/actions_edit.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Sep  3 23:03:42 2026
+
+@author: hounsousamuel
+"""
+
+from workbench.core.subprocess.wb_subprocess_types import (
+    PathArg, EnumArg, FloatArg, PatternArg, BoolArg, MultiPathArg, MultiPathMode
+)
+from workbench.products.mediakit.specs.ffmpeg.base_spec import FfmpegSpec
+from workbench.products.mediakit.specs.ffmpeg.base_model import (
+    TrimVideoInput, ScaleResolutionInput, CropVideoInput,
+    RotateVideoInput, SpeedVideoInput, MuteVideoInput,
+    BoostVolumeInput, AddWatermarkInput, ReplaceAudioInput
+)
+
+trim_lossless_spec = FfmpegSpec[TrimVideoInput](
+    id="ffmpeg_trim_lossless",
+    label="Couper un extrait vidéo (sans ré-encodage, instantané)",
+    input_cls=TrimVideoInput,
+    output_filename_template="trimmed.mp4",
+    build_args=lambda u: [
+        FloatArg(flag="-ss", value=u.start_seconds, min_value=0.0),
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        FloatArg(flag="-t", value=u.duration_seconds, min_value=0.1),
+        EnumArg(flag="-c", value="copy", enum_values=["copy"]),
+        PathArg(value="trimmed.mp4")
+    ]
+)
+
+scale_resolution_spec = FfmpegSpec[ScaleResolutionInput](
+    id="ffmpeg_scale_resolution",
+    label="Changer la résolution vidéo (1080p, 720p, 480p...)",
+    input_cls=ScaleResolutionInput,
+    output_filename_template="scaled.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        PatternArg(flag="-vf", value=f"scale={u.resolution.replace('x', ':')}"),
+        EnumArg(flag="-c:a", value="copy", enum_values=["copy"]),
+        PathArg(value="scaled.mp4")
+    ]
+)
+
+crop_video_spec = FfmpegSpec[CropVideoInput](
+    id="ffmpeg_crop_video",
+    auto_even_dimensions=True,
+    label="Recadrer la vidéo (Crop dimensions & coordonnées)",
+    input_cls=CropVideoInput,
+    output_filename_template="cropped.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        PatternArg(flag="-vf", value=f"crop={u.width}:{u.height}:{u.x}:{u.y}"),
+        EnumArg(flag="-c:a", value="copy", enum_values=["copy"]),
+        PathArg(value="cropped.mp4")
+    ]
+)
+
+_ROTATION_FILTERS = {
+    "90_cw": "transpose=1",
+    "90_ccw": "transpose=2",
+    "180": "transpose=1,transpose=1"
+}
+
+rotate_video_spec = FfmpegSpec[RotateVideoInput](
+    id="ffmpeg_rotate_video",
+    auto_even_dimensions=True,
+    label="Pivoter la vidéo (90° horaire, anti-horaire, 180°)",
+    input_cls=RotateVideoInput,
+    output_filename_template="rotated.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        PatternArg(flag="-vf", value=_ROTATION_FILTERS[u.rotation]),
+        EnumArg(flag="-c:a", value="copy", enum_values=["copy"]),
+        PathArg(value="rotated.mp4")
+    ]
+)
+
+_SPEED_PTS = {"0.5": "2.0", "0.75": "1.333", "1.25": "0.8", "1.5": "0.666", "2.0": "0.5"}
+
+speed_video_spec = FfmpegSpec[SpeedVideoInput](
+    id="ffmpeg_speed_video",
+    label="Changer la vitesse de lecture (accéléré / ralenti synchrone audio-vidéo)",
+    input_cls=SpeedVideoInput,
+    output_filename_template="speed.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        PatternArg(
+            flag="-filter_complex",
+            value=f"[0:v]setpts={_SPEED_PTS[u.speed_factor]}*PTS[v];[0:a]atempo={u.speed_factor}[a]"
+        ),
+        PatternArg(flag="-map", value="[v]"),
+        PatternArg(flag="-map", value="[a]"),
+        PathArg(value="speed.mp4")
+    ]
+)
+
+mute_video_spec = FfmpegSpec[MuteVideoInput](
+    id="ffmpeg_mute_video",
+    label="Couper le son d'une vidéo (supprime la piste audio)",
+    input_cls=MuteVideoInput,
+    output_filename_template="muted.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        BoolArg(flag="-an", value=True),
+        EnumArg(flag="-c:v", value="copy", enum_values=["copy"]),
+        PathArg(value="muted.mp4")
+    ]
+)
+
+boost_volume_spec = FfmpegSpec[BoostVolumeInput](
+    id="ffmpeg_boost_volume",
+    label="Augmenter / Réduire le volume sonore d'une vidéo",
+    input_cls=BoostVolumeInput,
+    output_filename_template="volume_adjusted.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        PatternArg(flag="-filter:a", value=f"volume={u.volume_multiplier}"),
+        EnumArg(flag="-c:v", value="copy", enum_values=["copy"]),
+        PathArg(value="volume_adjusted.mp4")
+    ]
+)
+
+_OVERLAY_COORDS = {
+    "top_left": "10:10",
+    "top_right": "main_w-overlay_w-10:10",
+    "bottom_left": "10:main_h-overlay_h-10",
+    "bottom_right": "main_w-overlay_w-10:main_h-overlay_h-10",
+    "center": "(main_w-overlay_w)/2:(main_h-overlay_h)/2"
+}
+
+watermark_spec = FfmpegSpec[AddWatermarkInput](
+    id="ffmpeg_watermark_image",
+    label="Incruster un logo / filigrane image sur la vidéo",
+    input_cls=AddWatermarkInput,
+    output_filename_template="watermarked.mp4",
+    build_args=lambda u: [
+        MultiPathArg(
+            flag="-i",
+            values=[u.input_file, u.watermark_image],
+            must_exist=True,
+            mode=MultiPathMode.REPEAT_FLAG
+        ),
+        PatternArg(flag="-filter_complex", value=f"overlay={_OVERLAY_COORDS[u.position]}"),
+        EnumArg(flag="-c:a", value="copy", enum_values=["copy"]),
+        PathArg(value="watermarked.mp4")
+    ]
+)
+
+replace_audio_spec = FfmpegSpec[ReplaceAudioInput](
+    id="ffmpeg_replace_audio",
+    label="Remplacer la bande son d'une vidéo par un fichier audio",
+    input_cls=ReplaceAudioInput,
+    output_filename_template="audio_replaced.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        PathArg(flag="-i", value=u.new_audio_file, must_exist=True),
+        PatternArg(flag="-map", value="0:v:0"),
+        PatternArg(flag="-map", value="1:a:0"),
+        EnumArg(flag="-c:v", value="copy", enum_values=["copy"]),
+        EnumArg(flag="-c:a", value="aac", enum_values=["aac"]),
+        BoolArg(flag="-shortest", value=True),
+        PathArg(value="audio_replaced.mp4")
+    ]
+)
+
+FFMPEG_EDIT_ACTIONS = {
+    trim_lossless_spec.id: trim_lossless_spec,
+    scale_resolution_spec.id: scale_resolution_spec,
+    crop_video_spec.id: crop_video_spec,
+    rotate_video_spec.id: rotate_video_spec,
+    speed_video_spec.id: speed_video_spec,
+    mute_video_spec.id: mute_video_spec,
+    boost_volume_spec.id: boost_volume_spec,
+    watermark_spec.id: watermark_spec,
+    replace_audio_spec.id: replace_audio_spec,
+}============================
+================./specs/ffmpeg/actions/actions_extract.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Sep  3 23:17:40 2026
+
+@author: hounsousamuel
+"""
+
+
+"""
+Workbench Mediakit — Actions FFmpeg : Extraction Audio, Frames et Sous-titres.
+
+Ce fichier gère l'extraction de la piste audio (sans perte ou avec ré-encodage), 
+la capture d'images fixes à un timestamp donné, l'extraction de séquences de miniatures et 
+l'extraction de sous-titres intégré.
+"""
+
+from workbench.specs.registry import collect_specs
+from workbench.core.subprocess.wb_subprocess_types import (
+    PathArg, EnumArg, FloatArg, PatternArg, BoolArg, IntArg
+)
+from workbench.products.mediakit.specs.ffmpeg.base_spec import FfmpegSpec
+from workbench.products.mediakit.specs.ffmpeg.base_model import (
+    ExtractAudioLosslessInput, ExtractAudioConvertInput,
+    ExtractFrameInput, ExtractFramesSeriesInput, ExtractSubtitlesInput
+)
+
+MIN_FFMPEG_VERSION = (4, 0)
+
+
+# ─── 1. EXTRACTION AUDIO SANS PERTE (-c:a copy) ──────────────────────────────
+extract_audio_lossless_spec = FfmpegSpec[ExtractAudioLosslessInput](
+    id="ffmpeg_extract_audio_lossless",
+    label="Extraire la piste audio sans perte (copie brute du flux audio natif)",
+    input_cls=ExtractAudioLosslessInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="audio_extracted.m4a",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        BoolArg(flag="-vn", value=True),
+        EnumArg(flag="-c:a", value="copy", enum_values=["copy"]),
+        PathArg(value="audio_extracted.m4a")
+    ]
+)
+
+
+# ─── 2. EXTRACTION AUDIO AVEC CONVERSION DE FORMAT ───────────────────────────
+extract_audio_convert_spec = FfmpegSpec[ExtractAudioConvertInput](
+    id="ffmpeg_extract_audio_convert",
+    label="Extraire et convertir la piste audio (MP3, WAV, AAC, FLAC, OGG)",
+    input_cls=ExtractAudioConvertInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template=lambda u: f"audio.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        BoolArg(flag="-vn", value=True),
+        EnumArg(
+            flag="-b:a",
+            value=u.bitrate,
+            enum_values=["128k", "192k", "256k", "320k"]
+        ),
+        PathArg(value=f"audio.{u.output_format}")
+    ]
+)
+
+
+# ─── 3. CAPTURE D'IMAGE UNIQUE (SNAPSHOT) ────────────────────────────────────
+extract_frame_single_spec = FfmpegSpec[ExtractFrameInput](
+    id="ffmpeg_extract_frame_single",
+    label="Capturer une image précise de la vidéo (Snapshot à un timestamp)",
+    input_cls=ExtractFrameInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template=lambda u: f"snapshot.{u.output_format}",
+    build_args=lambda u: [
+        FloatArg(flag="-ss", value=u.timestamp_seconds, min_value=0.0),
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        IntArg(flag="-frames:v", value=1, min_value=1, max_value=1),
+        PathArg(value=f"snapshot.{u.output_format}")
+    ]
+)
+
+
+# ─── 4. SÉRIE DE MINIATURES (PLANCHE CONTACT) ────────────────────────────────
+extract_frames_series_spec = FfmpegSpec[ExtractFramesSeriesInput](
+    id="ffmpeg_extract_frames_series",
+    label="Extraire une série d'images (1 capture toutes les N secondes)",
+    input_cls=ExtractFramesSeriesInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template=lambda u: f"thumb_0001.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        PatternArg(flag="-vf", value=f"fps=1/{u.every_n_seconds}"),
+        PathArg(value=f"thumb_%04d.{u.output_format}")
+    ]
+)
+
+
+# ─── 5. EXTRACTION DE SOUS-TITRES INTÉGRÉS ───────────────────────────────────
+extract_subtitles_spec = FfmpegSpec[ExtractSubtitlesInput](
+    id="ffmpeg_extract_subtitles",
+    label="Extraire la piste de sous-titres intégrée (vers fichier .srt ou .vtt)",
+    input_cls=ExtractSubtitlesInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template=lambda u: f"subtitles.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        PatternArg(flag="-map", value="0:s:0?"),
+        PathArg(value=f"subtitles.{u.output_format}")
+    ]
+)
+
+
+# =============================================================================
+# COLLECTE AUTOMATIQUE DU MODULE
+# =============================================================================
+FFMPEG_EXTRACT_ACTIONS = collect_specs(__name__)
+__all__ = ["FFMPEG_EXTRACT_ACTIONS"]============================
+================./specs/ffmpeg/actions/actions_timing.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Sep  3 23:21:27 2026
+
+@author: hounsousamuel
+"""
+
+"""
+Workbench Mediakit — Actions FFmpeg : Découpe, Vitesse, FPS et Timing.
+
+Ce fichier gère le découpage temporel (rapide ou chirurgical), le changement de cadence d'images (FPS),
+ l'accélération/ralenti audio-vidéo synchronisé et l'inversion de vidéo.
+"""
+
+from workbench.specs.registry import collect_specs
+from workbench.core.subprocess.wb_subprocess_types import (
+    PathArg, EnumArg, FloatArg, PatternArg, IntArg
+)
+from workbench.products.mediakit.specs.ffmpeg.base_spec import FfmpegSpec
+from workbench.products.mediakit.specs.ffmpeg.base_model import (
+    TrimVideoInput, SpeedVideoInput, ReverseVideoInput, ChangeFpsInput
+)
+
+MIN_FFMPEG_VERSION = (4, 0)
+
+
+# ─── 1. DÉCOUPE RAPIDE SANS RÉ-ENCODAGE (-c copy) ────────────────────────────
+trim_with_copy_spec = FfmpegSpec[TrimVideoInput](
+    id="ffmpeg_trim_with_copy",
+    label="Découper une vidéo (rapide, sans ré-encodage, calé sur keyframe)",
+    input_cls=TrimVideoInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="trimmed_copy.mp4",
+    build_args=lambda u: [
+        FloatArg(flag="-ss", value=u.start_seconds, min_value=0.0),
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        FloatArg(flag="-t", value=u.duration_seconds, min_value=0.01),
+        EnumArg(flag="-c", value="copy", enum_values=["copy"]),
+        PathArg(value="trimmed_copy.mp4")
+    ]
+)
+
+
+# ─── 2. DÉCOUPE EXACTE À LA FRAME PRÈS (RÉ-ENCODAGE) ─────────────────────────
+trim_no_copy_spec = FfmpegSpec[TrimVideoInput](
+    id="ffmpeg_trim_no_copy",
+    auto_even_dimensions=True,
+    label="Découper une vidéo (précision absolue à la milliseconde près)",
+    input_cls=TrimVideoInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="trimmed_exact.mp4",
+    build_args=lambda u: [
+        FloatArg(flag="-ss", value=u.start_seconds, min_value=0.0),
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        FloatArg(flag="-t", value=u.duration_seconds, min_value=0.01),
+        EnumArg(flag="-c:v", value="libx264", enum_values=["libx264"]),
+        EnumArg(flag="-c:a", value="aac", enum_values=["aac"]),
+        PathArg(value="trimmed_exact.mp4")
+    ]
+)
+
+
+# ─── 3. ACCÉLÉRÉ / RALENTI SYNCHRONISÉ AUDIO & VIDÉO ─────────────────────────
+_SPEED_FILTERS = {
+    "0.25": "[0:v]setpts=4.0*PTS[v];[0:a]atempo=0.5,atempo=0.5[a]",
+    "0.5":  "[0:v]setpts=2.0*PTS[v];[0:a]atempo=0.5[a]",
+    "0.75": "[0:v]setpts=1.333*PTS[v];[0:a]atempo=0.75[a]",
+    "1.25": "[0:v]setpts=0.8*PTS[v];[0:a]atempo=1.25[a]",
+    "1.5":  "[0:v]setpts=0.667*PTS[v];[0:a]atempo=1.5[a]",
+    "2.0":  "[0:v]setpts=0.5*PTS[v];[0:a]atempo=2.0[a]",
+}
+
+speed_video_spec = FfmpegSpec[SpeedVideoInput](
+    id="ffmpeg_speed_video",
+    label="Modifier la vitesse de lecture (accéléré / ralenti audio et vidéo)",
+    input_cls=SpeedVideoInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="speed_adjusted.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        PatternArg(flag="-filter_complex", value=_SPEED_FILTERS[u.speed_factor]),
+        PatternArg(flag="-map", value="[v]"),
+        PatternArg(flag="-map", value="[a]"),
+        EnumArg(flag="-c:v", value="libx264", enum_values=["libx264"]),
+        EnumArg(flag="-c:a", value="aac", enum_values=["aac"]),
+        PathArg(value="speed_adjusted.mp4")
+    ]
+)
+
+
+# ─── 4. INVERSER LE SENS DE LECTURE (REVERSE) ────────────────────────────────
+reverse_video_spec = FfmpegSpec[ReverseVideoInput](
+    id="ffmpeg_reverse_video",
+    auto_even_dimensions=True,
+    label="Inverser la vidéo et l'audio (effet rembobinage)",
+    input_cls=ReverseVideoInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="reversed.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        PatternArg(flag="-vf", value="reverse"),
+        PatternArg(flag="-af", value="areverse"),
+        EnumArg(flag="-c:v", value="libx264", enum_values=["libx264"]),
+        EnumArg(flag="-c:a", value="aac", enum_values=["aac"]),
+        PathArg(value="reversed.mp4")
+    ]
+)
+
+
+# ─── 5. MODIFIER LA CADENCE D'IMAGES (FPS) ───────────────────────────────────
+change_fps_spec = FfmpegSpec[ChangeFpsInput](
+    id="ffmpeg_change_fps",
+    auto_even_dimensions=True,
+    label="Changer le framerate / FPS (ex: 60 FPS -> 30 FPS ou 24 FPS cinéma)",
+    input_cls=ChangeFpsInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="fps_adjusted.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        IntArg(flag="-r", value=u.fps, min_value=15, max_value=60),
+        EnumArg(flag="-c:a", value="copy", enum_values=["copy"]),
+        PathArg(value="fps_adjusted.mp4")
+    ]
+)
+
+
+# =============================================================================
+# COLLECTE AUTOMATIQUE DU MODULE
+# =============================================================================
+FFMPEG_TIMING_ACTIONS = collect_specs(__name__)
+__all__ = ["FFMPEG_TIMING_ACTIONS"]============================
+================./specs/ffmpeg/actions/actions_geometry.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Sep  3 23:22:43 2026
+
+@author: hounsousamuel
+"""
+
+"""
+Workbench Mediakit — Actions FFmpeg : Géométrie, Recadrage et Formats Sociaux.
+Ce fichier gère la géométrie de l'image : redimensionnement, recadrage manuel, rotation, miroir, bandes noires (letterboxing) et 
+adaptation verticale pour les réseaux sociaux (TikTok, Reels, Shorts).
+"""
+
+from workbench.specs.registry import collect_specs
+from workbench.core.subprocess.wb_subprocess_types import (
+    PathArg, EnumArg, PatternArg
+)
+from workbench.products.mediakit.specs.ffmpeg.base_spec import FfmpegSpec
+from workbench.products.mediakit.specs.ffmpeg.base_model import (
+    ResizeVideoInput, CropVideoInput, SocialVerticalInput,
+    RotateVideoInput, FlipVideoInput, PadLetterboxInput, _RESOLUTIONS
+)
+
+MIN_FFMPEG_VERSION = (4, 0)
+
+
+# ─── 1. REDIMENSIONNEMENT PRÉDÉFINI ──────────────────────────────────────────
+resize_video_spec = FfmpegSpec[ResizeVideoInput](
+    id="ffmpeg_resize_video",
+    label="Redimensionner la vidéo (1080p, 720p, 480p, 360p, 240p)",
+    input_cls=ResizeVideoInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="resized.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        EnumArg(
+            flag="-vf",
+            value=f"scale={u.resolution.replace('x', ':')}",
+            enum_values=[f"scale={r.replace('x', ':')}" for r in _RESOLUTIONS]
+        ),
+        EnumArg(flag="-c:a", value="copy", enum_values=["copy"]),
+        PathArg(value="resized.mp4")
+    ]
+)
+
+
+# ─── 2. RECADRAGE MANUEL (CROP WxH+X+Y) ──────────────────────────────────────
+crop_video_spec = FfmpegSpec[CropVideoInput](
+    id="ffmpeg_crop_video",
+    auto_even_dimensions=True,
+    label="Recadrer la vidéo (rogner une zone rectangulaire)",
+    input_cls=CropVideoInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="cropped.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        PatternArg(flag="-vf", value=f"crop={u.width}:{u.height}:{u.x}:{u.y}"),
+        EnumArg(flag="-c:a", value="copy", enum_values=["copy"]),
+        PathArg(value="cropped.mp4")
+    ]
+)
+
+
+# ─── 3. ADAPTATION FORMAT VERTICAL 9:16 (TIKTOK / REELS / SHORTS) ────────────
+_SOCIAL_VERTICAL_FILTERS = {
+    # Crop centré pur
+    "crop_center": "crop=ih*(9/16):ih",
+    # Vidéo originale au centre avec arrière-plan flouté en haut et bas
+    "blur_background": (
+        "split[main][bg];"
+        "[bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=25:5[bgblur];"
+        "[main]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
+        "[bgblur][fg]overlay=(W-w)/2:(H-h)/2"
+    )
+}
+
+social_vertical_spec = FfmpegSpec[SocialVerticalInput](
+    id="ffmpeg_social_vertical",
+    label="Convertir au format 9:16 vertical (Reels, TikTok, Shorts)",
+    input_cls=SocialVerticalInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="vertical_social.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        PatternArg(
+            flag="-vf" if u.mode == "crop_center" else "-filter_complex",
+            value=_SOCIAL_VERTICAL_FILTERS[u.mode]
+        ),
+        EnumArg(flag="-c:a", value="copy", enum_values=["copy"]),
+        PathArg(value="vertical_social.mp4")
+    ]
+)
+
+
+# ─── 4. ROTATION VIDÉO (90°, 180°) ───────────────────────────────────────────
+_ROTATION_FILTERS = {
+    "90_cw":  "transpose=1",
+    "90_ccw": "transpose=2",
+    "180":    "transpose=1,transpose=1"
+}
+
+rotate_video_spec = FfmpegSpec[RotateVideoInput](
+    id="ffmpeg_rotate_video",
+    auto_even_dimensions=True,
+    label="Faire pivoter la vidéo (90° horaire, anti-horaire ou 180°)",
+    input_cls=RotateVideoInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="rotated.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        PatternArg(flag="-vf", value=_ROTATION_FILTERS[u.rotation]),
+        EnumArg(flag="-c:a", value="copy", enum_values=["copy"]),
+        PathArg(value="rotated.mp4")
+    ]
+)
+
+
+# ─── 5. EFFET MIROIR (FLIP / FLOP) ───────────────────────────────────────────
+flip_video_spec = FfmpegSpec[FlipVideoInput](
+    id="ffmpeg_flip_video",
+    auto_even_dimensions=True,
+    label="Appliquer un effet miroir (horizontal ou vertical)",
+    input_cls=FlipVideoInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="flipped.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        PatternArg(flag="-vf", value="hflip" if u.direction == "horizontal" else "vflip"),
+        EnumArg(flag="-c:a", value="copy", enum_values=["copy"]),
+        PathArg(value="flipped.mp4")
+    ]
+)
+
+
+# ─── 6. LETTERBOXING (AJOUT DE BANDES NOIRES / BLANCHES) ──────────────────────
+_PAD_FILTERS = {
+    "16:9": "pad=ih*(16/9):ih:(ow-iw)/2:(oh-ih)/2",
+    "4:3":  "pad=ih*(4/3):ih:(ow-iw)/2:(oh-ih)/2",
+    "1:1":  "pad=max(iw\\,ih):max(iw\\,ih):(ow-iw)/2:(oh-ih)/2"
+}
+
+pad_letterbox_spec = FfmpegSpec[PadLetterboxInput](
+    id="ffmpeg_pad_letterbox",
+    auto_even_dimensions=True,
+    label="Ajouter des bandes noires / marges pour forcer un ratio d'aspect",
+    input_cls=PadLetterboxInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="letterbox.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        PatternArg(flag="-vf", value=f"{_PAD_FILTERS[u.target_aspect]}:{u.color}"),
+        EnumArg(flag="-c:a", value="copy", enum_values=["copy"]),
+        PathArg(value="letterbox.mp4")
+    ]
+)
+
+
+# =============================================================================
+# COLLECTE AUTOMATIQUE DU MODULE
+# =============================================================================
+
+FFMPEG_GEOMETRY_ACTIONS = collect_specs(__name__)
+__all__ = ["FFMPEG_GEOMETRY_ACTIONS"]============================
+================./specs/ffmpeg/actions/actions_audio.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Sep  3 23:23:57 2026
+
+@author: hounsousamuel
+"""
+
+"""
+Workbench Mediakit — Actions FFmpeg : Traitement Audio au sein de la Vidéo.
+Ce fichier gère le son à l'intérieur de la vidéo : couper le son, amplifier le volume, 
+normaliser selon les standards YouTube/Broadcast (EBU R128), fondus audio, 
+correction de désynchronisation, remplacement de la bande-son et ajout d'une musique d'ambiance.
+"""
+
+from workbench.specs.registry import collect_specs
+from workbench.core.subprocess.wb_subprocess_types import (
+    PathArg, EnumArg, PatternArg, BoolArg
+)
+from workbench.products.mediakit.specs.ffmpeg.base_spec import FfmpegSpec
+from workbench.products.mediakit.specs.ffmpeg.base_model import (
+    MuteVideoInput, BoostVolumeInput, NormalizeLoudnessInput,
+    AudioFadeInput, FixAudioDelayInput, ReplaceAudioInput, AddBackgroundMusicInput
+)
+
+MIN_FFMPEG_VERSION = (4, 0)
+
+
+# ─── 1. SUPPRIMER LE SON (MUTE) ──────────────────────────────────────────────
+mute_video_spec = FfmpegSpec[MuteVideoInput](
+    id="ffmpeg_mute_video",
+    label="Supprimer complètement la piste sonore d'une vidéo",
+    input_cls=MuteVideoInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="muted.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        BoolArg(flag="-an", value=True),
+        EnumArg(flag="-c:v", value="copy", enum_values=["copy"]),
+        PathArg(value="muted.mp4")
+    ]
+)
+
+
+# ─── 2. AJUSTER / AMPLIFIER LE VOLUME ────────────────────────────────────────
+boost_volume_spec = FfmpegSpec[BoostVolumeInput](
+    id="ffmpeg_boost_volume",
+    label="Ajuster le volume sonore (amplifier ou atténuer le gain)",
+    input_cls=BoostVolumeInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="volume_adjusted.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        PatternArg(flag="-filter:a", value=f"volume={u.volume_multiplier}"),
+        EnumArg(flag="-c:v", value="copy", enum_values=["copy"]),
+        PathArg(value="volume_adjusted.mp4")
+    ]
+)
+
+
+# ─── 3. NORMALISATION DU VOLUME (EBU R128 LOUDNORM) ──────────────────────────
+normalize_loudness_spec = FfmpegSpec[NormalizeLoudnessInput](
+    id="ffmpeg_normalize_loudness",
+    label="Normaliser la puissance sonore (standard YouTube / Spotify à -16 LUFS)",
+    input_cls=NormalizeLoudnessInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="normalized_audio.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        PatternArg(flag="-filter:a", value=f"loudnorm=I={u.target_lufs}:LRA=11:TP=-1.5"),
+        EnumArg(flag="-c:v", value="copy", enum_values=["copy"]),
+        PathArg(value="normalized_audio.mp4")
+    ]
+)
+
+
+# ─── 4. FONDUS AUDIO ENTRANT ET SORTANT (FADE IN / OUT) ──────────────────────
+audio_fade_spec = FfmpegSpec[AudioFadeInput](
+    id="ffmpeg_audio_fade",
+    label="Ajouter un fondu sonore progressif au début et à la fin",
+    input_cls=AudioFadeInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="audio_faded.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        PatternArg(flag="-filter:a", value=f"afade=t=in:ss=0:d={u.fade_in_s}"),
+        EnumArg(flag="-c:v", value="copy", enum_values=["copy"]),
+        PathArg(value="audio_faded.mp4")
+    ]
+)
+
+
+# ─── 5. CORRIGER LA DÉSYNCHRONISATION SON / IMAGE ────────────────────────────
+fix_audio_delay_spec = FfmpegSpec[FixAudioDelayInput](
+    id="ffmpeg_fix_audio_delay",
+    label="Corriger un décalage entre la voix et l'image (avance/retard en ms)",
+    input_cls=FixAudioDelayInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="audio_synced.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        PatternArg(flag="-filter:a", value=f"adelay={u.delay_ms}|{u.delay_ms}"),
+        EnumArg(flag="-c:v", value="copy", enum_values=["copy"]),
+        PathArg(value="audio_synced.mp4")
+    ]
+)
+
+
+# ─── 6. REMPLACER LA BANDE SON PAR UN AUTRE FICHIER ──────────────────────────
+replace_audio_spec = FfmpegSpec[ReplaceAudioInput](
+    id="ffmpeg_replace_audio",
+    label="Remplacer complètement la bande-son par un nouveau fichier audio",
+    input_cls=ReplaceAudioInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="audio_replaced.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        PathArg(flag="-i", value=u.new_audio_file, must_exist=True),
+        PatternArg(flag="-map", value="0:v:0"),
+        PatternArg(flag="-map", value="1:a:0"),
+        EnumArg(flag="-c:v", value="copy", enum_values=["copy"]),
+        EnumArg(flag="-c:a", value="aac", enum_values=["aac"]),
+        BoolArg(flag="-shortest", value=True),
+        PathArg(value="audio_replaced.mp4")
+    ]
+)
+
+
+# ─── 7. AJOUTER UNE MUSIQUE D'AMBIANCE DE FOND (MIXAGE) ──────────────────────
+add_background_music_spec = FfmpegSpec[AddBackgroundMusicInput](
+    id="ffmpeg_add_background_music",
+    label="Ajouter une musique de fond par-dessus la voix existante",
+    input_cls=AddBackgroundMusicInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="music_mixed.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        PathArg(flag="-i", value=u.music_file, must_exist=True),
+        PatternArg(
+            flag="-filter_complex",
+            value=f"[1:a]volume={u.music_volume}[bg];[0:a][bg]amix=inputs=2:duration=first[aout]"
+        ),
+        PatternArg(flag="-map", value="0:v"),
+        PatternArg(flag="-map", value="[aout]"),
+        EnumArg(flag="-c:v", value="copy", enum_values=["copy"]),
+        EnumArg(flag="-c:a", value="aac", enum_values=["aac"]),
+        PathArg(value="music_mixed.mp4")
+    ]
+)
+
+
+# =============================================================================
+# COLLECTE AUTOMATIQUE DU MODULE
+# =============================================================================
+FFMPEG_AUDIO_ACTIONS = collect_specs(__name__)
+__all__ = ["FFMPEG_AUDIO_ACTIONS"]============================
+================./specs/ffmpeg/actions/actions_effects.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Sep  3 23:24:43 2026
+
+@author: hounsousamuel
+"""
+
+
+"""
+Workbench Mediakit — Actions FFmpeg : Incrustations et Effets Visuels.
+
+Ce fichier gère les incrustations visuelles : watermark de logo, incrustation de sous-titres en dur (hardsub), 
+ajustement des couleurs/luminosité/saturation, et flou d'anonymisation.
+"""
+
+from workbench.specs.registry import collect_specs
+from workbench.core.subprocess.wb_subprocess_types import (
+    PathArg, EnumArg, PatternArg, MultiPathArg, MultiPathMode
+)
+from workbench.products.mediakit.specs.ffmpeg.base_spec import FfmpegSpec
+from workbench.products.mediakit.specs.ffmpeg.base_model import (
+    AddWatermarkInput, BurnSubtitlesInput, AdjustColorEqInput, BlurVideoInput
+)
+
+MIN_FFMPEG_VERSION = (4, 0)
+
+
+# ─── 1. INCRUSTER UN LOGO / FILIGRANE IMAGE (WATERMARK) ──────────────────────
+_WATERMARK_COORDS = {
+    "top_left":     "15:15",
+    "top_right":    "main_w-overlay_w-15:15",
+    "bottom_left":  "15:main_h-overlay_h-15",
+    "bottom_right": "main_w-overlay_w-15:main_h-overlay_h-15",
+    "center":       "(main_w-overlay_w)/2:(main_h-overlay_h)/2"
+}
+
+watermark_spec = FfmpegSpec[AddWatermarkInput](
+    id="ffmpeg_add_watermark_image",
+    label="Incruster un logo en filigrane (PNG transparent)",
+    input_cls=AddWatermarkInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="watermarked.mp4",
+    build_args=lambda u: [
+        MultiPathArg(
+            flag="-i",
+            values=[u.input_file, u.watermark_image],
+            must_exist=True,
+            mode=MultiPathMode.REPEAT_FLAG
+        ),
+        PatternArg(
+            flag="-filter_complex",
+            value=f"overlay={_WATERMARK_COORDS[u.position].replace('15', str(u.margin_px))}"
+        ),
+        EnumArg(flag="-c:a", value="copy", enum_values=["copy"]),
+        PathArg(value="watermarked.mp4")
+    ]
+)
+
+
+# ─── 2. INCRUSTER LES SOUS-TITRES EN DUR (HARDSUB) ───────────────────────────
+burn_subtitles_spec = FfmpegSpec[BurnSubtitlesInput](
+    id="ffmpeg_burn_subtitles",
+    auto_even_dimensions=True,
+    label="Incruster des sous-titres .srt en dur directement dans l'image",
+    input_cls=BurnSubtitlesInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="subtitles_burned.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        PatternArg(flag="-vf", value=f"subtitles={u.subtitles_file}"),
+        EnumArg(flag="-c:a", value="copy", enum_values=["copy"]),
+        PathArg(value="subtitles_burned.mp4")
+    ]
+)
+
+
+# ─── 3. AJUSTER COULEURS, LUMINOSITÉ ET SATURATION ───────────────────────────
+adjust_color_eq_spec = FfmpegSpec[AdjustColorEqInput](
+    id="ffmpeg_adjust_color_eq",
+    auto_even_dimensions=True,
+    label="Corriger l'exposition (luminosité, contraste, saturation)",
+    input_cls=AdjustColorEqInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="color_adjusted.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        PatternArg(
+            flag="-vf",
+            value=f"eq=brightness={u.brightness}:contrast={u.contrast}:saturation={u.saturation}"
+        ),
+        EnumArg(flag="-c:a", value="copy", enum_values=["copy"]),
+        PathArg(value="color_adjusted.mp4")
+    ]
+)
+
+
+# ─── 4. FLOU D'ANONYMISATION GLOBAL ──────────────────────────────────────────
+blur_video_spec = FfmpegSpec[BlurVideoInput](
+    id="ffmpeg_blur_video",
+    auto_even_dimensions=True,
+    label="Appliquer un flou global sur l'ensemble de la vidéo",
+    input_cls=BlurVideoInput,
+    validate_arg=True,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="blurred.mp4",
+    build_args=lambda u: [
+        PathArg(flag="-i", value=u.input_file, must_exist=True),
+        PatternArg(flag="-vf", value=f"boxblur={u.intensity}:1"),
+        EnumArg(flag="-c:a", value="copy", enum_values=["copy"]),
+        PathArg(value="blurred.mp4")
+    ]
+)
+
+
+# =============================================================================
+# COLLECTE AUTOMATIQUE DU MODULE
+# =============================================================================
+FFMPEG_EFFECTS_ACTIONS = collect_specs(__name__)
+__all__ = ["FFMPEG_EFFECTS_ACTIONS"]============================
+================./specs/ffmpeg/actions/actions_multi.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Sep  3 23:25:07 2026
+
+@author: hounsousamuel
+"""
+
+"""
+Workbench Mediakit — Actions FFmpeg : Concaténation et Assemblage Multi-fichiers.
+
+Le fichier pour les opérations multi-fichiers (concaténation de plusieurs vidéos via MultiPathArg et création d'une vidéo YouTube/Podcast à partir d'une image fixe et d'un MP3).
+"""
+
+from workbench.specs.registry import collect_specs
+from workbench.core.subprocess.wb_subprocess_types import (
+    PathArg, EnumArg, PatternArg, BoolArg, MultiPathArg, MultiPathMode
+)
+from workbench.products.mediakit.specs.ffmpeg.base_spec import FfmpegSpec
+from workbench.products.mediakit.specs.ffmpeg.base_model import (
+    ConcatVideosInput, ImagePlusAudioInput
+)
+
+MIN_FFMPEG_VERSION = (4, 0)
+
+
+# ─── 1. CONCATÉNER PLUSIEURS VIDÉOS (UPLOAD MULTIPLE) ─────────────────────────
+concat_videos_spec = FfmpegSpec[ConcatVideosInput](
+    id="ffmpeg_concat_videos",
+    label="Assembler plusieurs vidéos bout à bout (dans l'ordre d'upload)",
+    input_cls=ConcatVideosInput,
+    validate_arg=False,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="concatenated.mp4",
+    build_args=lambda u: [
+        BoolArg(flag="-y", value=True),
+        MultiPathArg(
+            flag="-i",
+            values=u.inputs,
+            must_exist=True,
+            mode=MultiPathMode.REPEAT_FLAG
+        ),
+        PatternArg(
+            flag="-filter_complex",
+            value="".join(f"[{i}:v:0][{i}:a:0]" for i in range(len(u.inputs)))
+                  + f"concat=n={len(u.inputs)}:v=1:a=1[outv][outa]"
+        ),
+        PatternArg(flag="-map", value="[outv]"),
+        PatternArg(flag="-map", value="[outa]"),
+        EnumArg(flag="-c:v", value="libx264", enum_values=["libx264"]),
+        EnumArg(flag="-c:a", value="aac", enum_values=["aac"]),
+        PathArg(value="concatenated.mp4")
+    ]
+)
+
+
+# ─── 2. CRÉER UNE VIDÉO DEPUIS UNE IMAGE FIXE + UN FICHIER AUDIO ─────────────
+image_plus_audio_spec = FfmpegSpec[ImagePlusAudioInput](
+    id="ffmpeg_image_plus_audio",
+    label="Créer une vidéo YouTube/Podcast à partir d'une image fixe et d'un audio",
+    input_cls=ImagePlusAudioInput,
+    validate_arg=False,
+    min_version=MIN_FFMPEG_VERSION,
+    output_filename_template="podcast_video.mp4",
+    build_args=lambda u: [
+        BoolArg(flag="-loop", value=True),
+        PathArg(flag="-i", value=u.image_file, must_exist=True),
+        PathArg(flag="-i", value=u.audio_file, must_exist=True),
+        EnumArg(flag="-c:v", value="libx264", enum_values=["libx264"]),
+        EnumArg(flag="-c:a", value="aac", enum_values=["aac"]),
+        EnumArg(flag="-b:a", value="192k", enum_values=["192k"]),
+        PatternArg(flag="-pix_fmt", value="yuv420p"),
+        BoolArg(flag="-shortest", value=True),
+        PathArg(value="podcast_video.mp4")
+    ]
+)
+
+
+# =============================================================================
+# COLLECTE AUTOMATIQUE DU MODULE
+# =============================================================================
+FFMPEG_MULTI_ACTIONS = collect_specs(__name__)
+__all__ = ["FFMPEG_MULTI_ACTIONS"]============================
+================./specs/sox/base_spec.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Sep  1 18:14:25 2026
+
+@author: hounsousamuel
+"""
+
+"""Workbench Mediakit — SoxSpec, la base de toutes les actions SoX."""
+
+from pathlib import Path
+
+from workbench.specs.specs import ActionSpec, InputT
+from workbench.core.subprocess.engine import resolve_sandboxed_path
+from workbench.products.mediakit.specs.sox.base_model import BaseSoxActionInput
+from workbench.products.mediakit.mk_utils.utils import is_audio_file
+from workbench.core.subprocess.version_checker import (
+    Config as BinVersionCheckerConfig,
+)
+SOX_CONFIG = BinVersionCheckerConfig(**{'cmd': '--version', 'marker': 'sox', 'tool_name': 'sox'})
+
+class IsNotAudioFile(Exception):
+    pass
+
+
+class SoxSpec(ActionSpec[InputT]):
+    tool: str = "sox"
+    binary_config: BinVersionCheckerConfig = SOX_CONFIG
+    # Contrairement à ffmpeg/magick, SoX ne va jamais chercher de ressource
+    # distante ni interpréter de préfixe genre "protocole:" dans un nom de
+    # fichier — pas d'équivalent de protocol_whitelist nécessaire ici. Le
+    # garde-fou générique contre les ":" (déjà dans resolve_sandboxed_path)
+    # suffit comme défense en profondeur commune aux 3 outils.
+
+    def full_args(self, user_input: InputT) -> list:
+        return self.build_args(user_input)
+
+    def validate_args(self, user_input: BaseSoxActionInput, workdir: Path) -> None:
+        if not isinstance(user_input, BaseSoxActionInput):
+            raise ValueError("Input should be a valid BaseSoxActionInput !")
+
+        if self.validate_arg:
+            resolved = resolve_sandboxed_path(user_input.input_file, workdir)
+            if not is_audio_file(str(resolved)):
+                raise IsNotAudioFile(
+                    f"{user_input.input_file} ne semble pas être un fichier audio"
+                )============================
+================./specs/sox/base_model.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Sep  1 18:24:36 2026
+
+@author: hounsousamuel
+"""
+
+"""
+Workbench Mediakit — Modèles d'input Pydantic complets pour toutes les actions SoX.
+"""
+
+from typing import Literal
+from pydantic import BaseModel, Field
+from workbench.specs.uploads import UploadRef
+
+
+class BaseSoxActionInput(BaseModel):
+    """Socle commun pour toute action SoX avec fichier audio source."""
+    input_file: str = UploadRef(description="Fichier audio source principal")
+
+
+# ─── A. CONVERT, SAMPLE RATE & CANAUX ───
+class ConvertAudioInput(BaseSoxActionInput):
+    output_format: Literal["mp3", "wav", "flac", "ogg"] = "mp3"
+
+
+class ResampleAudioInput(BaseSoxActionInput):
+    sample_rate: Literal["48000", "44100", "22050", "16000", "8000"] = "44100"
+    output_format: Literal["wav", "flac", "mp3"] = "wav"
+
+
+class ChannelsRemixInput(BaseSoxActionInput):
+    channels: Literal["1", "2"] = "1"
+    output_format: Literal["wav", "mp3", "flac"] = "wav"
+
+
+class ExtractChannelInput(BaseSoxActionInput):
+    channel: Literal["left", "right"] = "left"
+    output_format: Literal["wav", "mp3", "flac"] = "wav"
+
+
+class ChangeBitDepthInput(BaseSoxActionInput):
+    bit_depth: Literal["16", "24", "32"] = "16"
+    output_format: Literal["wav", "flac"] = "wav"
+
+
+# ─── B. VOLUME, DYNAMIQUE & NETTOYAGE ───
+class NormalizeGainInput(BaseSoxActionInput):
+    target_db: float = Field(default=-1.0, le=0.0, ge=-24.0, description="Niveau crête max (ex: -1.0 dB pour éviter le clipping)")
+    output_format: Literal["wav", "flac", "mp3"] = "wav"
+
+
+class AdjustGainInput(BaseSoxActionInput):
+    gain_db: float = Field(default=3.0, ge=-30.0, le=30.0, description="Ajustement de volume en dB (+ ou -)")
+    output_format: Literal["wav", "flac", "mp3"] = "wav"
+
+
+class CompandDynamicsInput(BaseSoxActionInput):
+    profile: Literal["podcast_voice", "loudness_booster", "subtle_compression"] = "podcast_voice"
+    output_format: Literal["wav", "flac", "mp3"] = "wav"
+
+
+class StripSilenceInput(BaseSoxActionInput):
+    threshold_percent: float = Field(default=1.0, ge=0.1, le=10.0, description="Seuil de détection du silence (1% recommandé)")
+    min_silence_duration: float = Field(default=0.5, ge=0.1, le=5.0, description="Durée min d'un silence à supprimer (secondes)")
+    output_format: Literal["wav", "flac", "mp3"] = "wav"
+
+
+# ─── C. DÉCOUPE, VITESSE & TIMING ───
+class TrimAudioInput(BaseSoxActionInput):
+    start_seconds: float = Field(default=0.0, ge=0.0, description="Début du segment en secondes")
+    duration_seconds: float = Field(default=30.0, gt=0.01, description="Durée du segment en secondes")
+    output_format: Literal["wav", "flac", "mp3"] = "wav"
+
+
+class FadeAudioInput(BaseSoxActionInput):
+    curve: Literal["t", "q", "h"] = "t"
+    fade_in_s: float = Field(default=3.0, ge=0.0)
+    fade_out_s: float = Field(default=3.0, ge=0.0)
+    output_format: Literal["wav", "flac", "mp3"] = "wav"
+
+
+class PadSilenceInput(BaseSoxActionInput):
+    pad_start_s: float = Field(default=0.0, ge=0.0, description="Secondes de silence à ajouter au début")
+    pad_end_s: float = Field(default=2.0, ge=0.0, description="Secondes de silence à ajouter à la fin")
+    output_format: Literal["wav", "flac", "mp3"] = "wav"
+
+
+class ChangeTempoInput(BaseSoxActionInput):
+    factor: float = Field(default=1.2, ge=0.5, le=2.5, description="Facteur tempo sans changer la hauteur de voix (1.0 = normal)")
+    output_format: Literal["wav", "flac", "mp3"] = "wav"
+
+
+class ChangePitchInput(BaseSoxActionInput):
+    cents: int = Field(default=200, ge=-1200, le=1200, description="Hauteur en centièmes de demi-ton (+100 = 1 demi-ton plus haut)")
+    output_format: Literal["wav", "flac", "mp3"] = "wav"
+
+
+class ReverseAudioInput(BaseSoxActionInput):
+    output_format: Literal["wav", "flac", "mp3"] = "wav"
+
+
+# ─── D. ÉGALISATION & FILTRES FRÉQUENTIELS ───
+class BassTrebleInput(BaseSoxActionInput):
+    bass_db: float = Field(default=3.0, ge=-20.0, le=20.0, description="Gain des basses en dB")
+    treble_db: float = Field(default=0.0, ge=-20.0, le=20.0, description="Gain des aigus en dB")
+    output_format: Literal["wav", "flac", "mp3"] = "wav"
+
+
+class LowPassFilterInput(BaseSoxActionInput):
+    cutoff_hz: int = Field(default=3000, ge=200, le=20000, description="Fréquence de coupure haute (Hz)")
+    output_format: Literal["wav", "flac", "mp3"] = "wav"
+
+
+class HighPassFilterInput(BaseSoxActionInput):
+    cutoff_hz: int = Field(default=100, ge=20, le=5000, description="Fréquence de coupure basse pour éliminer le rumble (Hz)")
+    output_format: Literal["wav", "flac", "mp3"] = "wav"
+
+
+class ParametricEqualizerInput(BaseSoxActionInput):
+    frequency_hz: int = Field(default=1000, ge=40, le=16000, description="Fréquence centrale de la bande")
+    bandwidth_hz: int = Field(default=200, ge=10, le=4000, description="Largeur de la bande passante (Hz)")
+    gain_db: float = Field(default=3.0, ge=-24.0, le=24.0, description="Amplification ou atténuation en dB")
+    output_format: Literal["wav", "flac", "mp3"] = "wav"
+
+
+# ─── E. EFFETS ACOUSTIQUES & MODULATION ───
+class ReverbAudioInput(BaseSoxActionInput):
+    reverberance: int = Field(default=50, ge=0, le=100, description="Pourcentage de réverbération")
+    damping: int = Field(default=50, ge=0, le=100, description="Amortissement des hautes fréquences")
+    output_format: Literal["wav", "flac", "mp3"] = "wav"
+
+
+class EchoAudioInput(BaseSoxActionInput):
+    delay_ms: int = Field(default=250, ge=50, le=2000, description="Délai de l'écho en millisecondes")
+    decay: float = Field(default=0.4, ge=0.1, le=0.9, description="Atténuation de l'écho (0.4 = 40%)")
+    output_format: Literal["wav", "flac", "mp3"] = "wav"
+
+
+class ChorusAudioInput(BaseSoxActionInput):
+    intensity: Literal["subtle", "medium", "heavy"] = "medium"
+    output_format: Literal["wav", "flac", "mp3"] = "wav"
+
+
+class OverdriveAudioInput(BaseSoxActionInput):
+    gain_db: int = Field(default=10, ge=1, le=40, description="Niveau de saturation/distorsion harmonique en dB")
+    colour: int = Field(default=20, ge=0, le=100, description="Couleur harmonique")
+    output_format: Literal["wav", "flac", "mp3"] = "wav"============================
+================./specs/sox/actions/__init__.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Sep  2 10:43:04 2026
+
+@author: hounsousamuel
+"""
+
+"""
+Workbench Mediakit — Spécifications et catalogue complet SoX.
+"""
+
+from workbench.products.mediakit.specs.sox.actions.actions_convert import SOX_CONVERT_ACTIONS
+from workbench.products.mediakit.specs.sox.actions.actions_dynamics import SOX_DYNAMICS_ACTIONS
+from workbench.products.mediakit.specs.sox.actions.actions_timing import SOX_TIMING_ACTIONS
+from workbench.products.mediakit.specs.sox.actions.actions_eq import SOX_EQ_ACTIONS
+from workbench.products.mediakit.specs.sox.actions.actions_effects import SOX_EFFECTS_ACTIONS
+from workbench.wb_utils.merger import merge
+
+# ─── DICT 1 : MERGE TOTAL À PLAT (Recherche O(1) rapide par action_id) ───────
+SOX_ACTIONS = merge(
+    SOX_CONVERT_ACTIONS,
+    SOX_DYNAMICS_ACTIONS,
+    SOX_TIMING_ACTIONS,
+    SOX_EQ_ACTIONS,
+    SOX_EFFECTS_ACTIONS,
+)
+
+
+# ─── DICT 2 : CATALOGUE GRANULAIRE STRUCTURÉ (Pour les onglets et l'UI) ──────
+SOX_CATALOG = {
+    "all_cat": SOX_ACTIONS,
+    "categories": {
+        "convert": {
+            "description": (
+                "Transcodage et structure de flux : conversion entre formats audio (MP3, WAV, FLAC, OGG), "
+                "rééchantillonnage de haute fidélité (48kHz, 44.1kHz, 16kHz pour Whisper/IA), "
+                "gestion des canaux stéréo/mono, extraction de canal isolé et ajustement du bit-depth (16/24/32 bits)."
+            ),
+            "values": SOX_CONVERT_ACTIONS,
+        },
+        "dynamics": {
+            "description": (
+                "Contrôle de la dynamique et volume : normalisation de crête (norm) pour maximiser le son "
+                "sans écrêtage numérique, gain manuel en décibels, compresseur multi-bandes professionnel (compand) "
+                "pour un son percutant type podcast/radio, et suppression automatique des silences et blancs."
+            ),
+            "values": SOX_DYNAMICS_ACTIONS,
+        },
+        "timing": {
+            "description": (
+                "Gestion temporelle et tonalité : découpage précis de segments audio (trim), application de "
+                "fondus sonores en entrée et sortie (fade in/out), ajout de silences (pad), modification indépendante "
+                "du tempo sans altérer la voix, changement de tonalité (pitch), et lecture inversée (reverse)."
+            ),
+            "values": SOX_TIMING_ACTIONS,
+        },
+        "eq": {
+            "description": (
+                "Égalisation et filtrage fréquentiel : contrôle rapide des basses et aigus (Bass & Treble en dB), "
+                "filtre passe-bas pour adoucir le son, filtre passe-haut pour éliminer les résonances sourdes et bruits "
+                "de manipulation micro (< 100 Hz), et égaliseur paramétrique chirurgical."
+            ),
+            "values": SOX_EQ_ACTIONS,
+        },
+        "effects": {
+            "description": (
+                "Effets sonores acoustiques et créatifs : réverbération d'espace acoustique de studio, délai et écho "
+                "rythmique, effet Chorus pour épaissir la voix et donner du relief, et saturation Overdrive analogique."
+            ),
+            "values": SOX_EFFECTS_ACTIONS,
+        },
+    },
+}
+
+
+__all__ = [
+    "SOX_ACTIONS",
+    "SOX_CATALOG",
+]============================
+================./specs/sox/actions/actions_convert.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Sep  2 10:43:08 2026
+
+@author: hounsousamuel
+"""
+
+
+"""
+Workbench Mediakit — Actions SoX : Formats, Échantillonnage, Résolution et Canaux.
+
+Ce fichier gère le transcodage entre conteneurs audio (MP3, WAV, FLAC, OGG),
+la conversion de fréquence d'échantillonnage haute fidélité (44.1kHz, 48kHz, 16kHz pour Whisper/IA),
+la gestion du nombre de canaux (mixage Stéréo vers Mono et vice-versa, extraction de canal isolé)
+et la modification de la résolution binaire (16, 24 ou 32 bits avec dither).
+"""
+
+from workbench.specs.registry import collect_specs
+from workbench.core.subprocess.wb_subprocess_types import PathArg, EnumArg
+from workbench.products.mediakit.specs.sox.base_spec import SoxSpec
+from workbench.products.mediakit.specs.sox.base_model import (
+    ConvertAudioInput, ResampleAudioInput, ChannelsRemixInput,
+    ExtractChannelInput, ChangeBitDepthInput
+)
+
+MIN_SOX_VERSION = (14, 4)
+
+
+# ─── 1. TRANSCODAGE DE FORMAT AUDIO ──────────────────────────────────────────
+convert_audio_spec = SoxSpec[ConvertAudioInput](
+    id="sox_convert_format",
+    label="Transcoder le format audio (MP3, WAV, FLAC, OGG)",
+    input_cls=ConvertAudioInput,
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    output_filename_template=lambda u: f"converted.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value=f"converted.{u.output_format}")
+    ]
+)
+
+
+# ─── 2. RÉÉCHANTILLONNAGE DE FRÉQUENCE (SAMPLE RATE) ─────────────────────────
+resample_audio_spec = SoxSpec[ResampleAudioInput](
+    id="sox_resample_rate",
+    label="Modifier la fréquence d'échantillonnage (48kHz, 44.1kHz, 16kHz...)",
+    input_cls=ResampleAudioInput,
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    output_filename_template=lambda u: f"resampled.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value=f"resampled.{u.output_format}"),
+        EnumArg(value="rate", enum_values=["rate"]),
+        EnumArg(value=u.sample_rate, enum_values=["48000", "44100", "22050", "16000", "8000"])
+    ]
+)
+
+
+# ─── 3. CONVERSION DE CANAUX (STÉRÉO / MONO) ─────────────────────────────────
+channels_remix_spec = SoxSpec[ChannelsRemixInput](
+    id="sox_channels_remix",
+    label="Changer le nombre de canaux (Stéréo vers Mono ou Mono vers Stéréo)",
+    input_cls=ChannelsRemixInput,
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    output_filename_template=lambda u: f"channels_remixed.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        EnumArg(flag="-c", value=u.channels, enum_values=["1", "2"]),
+        PathArg(value=f"channels_remixed.{u.output_format}")
+    ]
+)
+
+
+# ─── 4. EXTRAIRE UN CANAL ISOLÉ (GAUCHE OU DROIT) ────────────────────────────
+extract_channel_spec = SoxSpec[ExtractChannelInput](
+    id="sox_extract_channel",
+    label="Extraire un seul canal audio isolé (Gauche ou Droit)",
+    input_cls=ExtractChannelInput,
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    output_filename_template=lambda u: f"channel_{u.channel}.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value=f"channel_{u.channel}.{u.output_format}"),
+        EnumArg(value="remix", enum_values=["remix"]),
+        EnumArg(value="1" if u.channel == "left" else "2", enum_values=["1", "2"])
+    ]
+)
+
+
+# ─── 5. MODIFIER LA RÉSOLUTION BINAIRE (BIT DEPTH) ───────────────────────────
+change_bit_depth_spec = SoxSpec[ChangeBitDepthInput](
+    id="sox_change_bit_depth",
+    label="Modifier la profondeur de quantification binaire (16, 24 ou 32 bits)",
+    input_cls=ChangeBitDepthInput,
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    output_filename_template=lambda u: f"quantized_{u.bit_depth}bit.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        EnumArg(flag="-b", value=u.bit_depth, enum_values=["16", "24", "32"]),
+        PathArg(value=f"quantized_{u.bit_depth}bit.{u.output_format}")
+    ]
+)
+
+
+# =============================================================================
+# COLLECTE AUTOMATIQUE DU MODULE
+# =============================================================================
+SOX_CONVERT_ACTIONS = collect_specs(__name__)
+__all__ = ["SOX_CONVERT_ACTIONS"]============================
+================./specs/sox/actions/actions_edit.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Sep  2 10:43:35 2026
+
+@author: hounsousamuel
+"""
+
+"""Workbench Mediakit — SoX : actions d'édition audio (normalize, trim, fade)."""
+
+from workbench.core.subprocess.wb_subprocess_types import PathArg, EnumArg, FloatArg
+from workbench.specs.registry import collect_specs
+from workbench.products.mediakit.specs.sox.base_spec import SoxSpec
+from workbench.products.mediakit.specs.sox.base_model import (
+    NormalizeAudioInput, TrimAudioInput, FadeAudioInput,
+)
+
+MIN_SOX_VERSION = (14, 4)
+
+
+# sox input output norm <target_db>
+normalize_audio = SoxSpec[NormalizeAudioInput](
+    id="normalize_audio",
+    label="Normaliser le volume d'un audio",
+    tool="sox",
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value="normalized.wav"),
+        EnumArg(value="norm", enum_values=["norm"]),
+        FloatArg(value=u.target_db, max_value=0),
+    ],
+    output_filename_template="normalized.wav",
+    input_cls=NormalizeAudioInput,
+)
+
+
+# sox input output trim <start> <duration>
+trim_audio = SoxSpec[TrimAudioInput](
+    id="trim_audio",
+    label="Découper un extrait audio",
+    tool="sox",
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value="trimmed.wav"),
+        EnumArg(value="trim", enum_values=["trim"]),
+        FloatArg(value=u.start_seconds, min_value=0),
+        FloatArg(value=u.duration_seconds, min_value=0.01),
+    ],
+    output_filename_template="trimmed.wav",
+    input_cls=TrimAudioInput,
+)
+
+
+# sox input output fade <in> 0 <out> — "0" = jusqu'à la fin réelle du fichier
+fade_audio = SoxSpec[FadeAudioInput](
+    id="fade_audio",
+    label="Ajouter un fondu (entrée/sortie) sur un audio",
+    tool="sox",
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value="faded.wav"),
+        EnumArg(value="fade", enum_values=["fade"]),
+        FloatArg(value=u.fade_in_seconds, min_value=0),
+        FloatArg(value=0, min_value=0, max_value=0),  # "0" = fin auto-détectée
+        FloatArg(value=u.fade_out_seconds, min_value=0),
+    ],
+    output_filename_template="faded.wav",
+    input_cls=FadeAudioInput,
+)
+
+
+SOX_EDIT_ACTIONS = collect_specs(__name__)============================
+================./specs/sox/actions/actions_dynamics.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Sep  3 23:43:02 2026
+
+@author: hounsousamuel
+"""
+
+"""
+Workbench Mediakit — Actions SoX : Volume, Dynamique et Nettoyage Sonore.
+
+Ce fichier gère le contrôle des niveaux sonores et de la dynamique :
+la normalisation de crête pour éviter le clipping numérique, l'ajustement
+manuel de gain en dB, la compression dynamique professionnelle (profils podcast,
+maximisation du volume) et la détection/suppression automatique des silences indésirables.
+"""
+
+from workbench.specs.registry import collect_specs
+from workbench.core.subprocess.wb_subprocess_types import (
+    PathArg, EnumArg, FloatArg, PatternArg
+)
+from workbench.products.mediakit.specs.sox.base_spec import SoxSpec
+from workbench.products.mediakit.specs.sox.base_model import (
+    NormalizeGainInput, AdjustGainInput, CompandDynamicsInput, StripSilenceInput
+)
+
+MIN_SOX_VERSION = (14, 4)
+
+
+# ─── 1. NORMALISATION DE CRÊTE (MAXIMISER LE VOLUME SANS SATURATION) ─────────
+normalize_gain_spec = SoxSpec[NormalizeGainInput](
+    id="sox_normalize_gain",
+    label="Normaliser la crête sonore (volume max sans écrêtage)",
+    input_cls=NormalizeGainInput,
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    output_filename_template=lambda u: f"normalized.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value=f"normalized.{u.output_format}"),
+        EnumArg(value="norm", enum_values=["norm"]),
+        FloatArg(value=u.target_db, min_value=-24.0, max_value=0.0)
+    ]
+)
+
+
+# ─── 2. AJUSTEMENT MANUEL DE GAIN (AMPLIFICATION / ATTÉNUATION dB) ───────────
+adjust_gain_spec = SoxSpec[AdjustGainInput](
+    id="sox_adjust_gain",
+    label="Ajuster le gain audio manuellement (amplification ou réduction en dB)",
+    input_cls=AdjustGainInput,
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    output_filename_template=lambda u: f"gain_adjusted.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value=f"gain_adjusted.{u.output_format}"),
+        EnumArg(value="gain", enum_values=["gain"]),
+        FloatArg(value=u.gain_db, min_value=-30.0, max_value=30.0)
+    ]
+)
+
+
+# ─── 3. COMPRESSION DYNAMIQUE (COMPAND) ──────────────────────────────────────
+_COMPAND_PROFILES = {
+    # Profil voix podcast équilibrée (attaque rapide, compresse les pointes et rehausse le bas)
+    "podcast_voice": "0.3,1 6:-70,-60,-20 -5 -90 0.2",
+    # Maximiseur d'énergie sonore global (mastering agressif)
+    "loudness_booster": "0.05,0.2 6:-60,-40,-10 -2 -80 0.05",
+    # Compression transparente légère
+    "subtle_compression": "0.5,1.5 6:-60,-50,-15 -2 -90 0.3"
+}
+
+compand_dynamics_spec = SoxSpec[CompandDynamicsInput](
+    id="sox_compand_dynamics",
+    label="Compresseur dynamique de studio (lisser les écarts de voix et d'ambiance)",
+    input_cls=CompandDynamicsInput,
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    output_filename_template=lambda u: f"companded.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value=f"companded.{u.output_format}"),
+        EnumArg(value="compand", enum_values=["compand"]),
+        PatternArg(value=_COMPAND_PROFILES[u.profile])
+    ]
+)
+
+
+# ─── 4. SUPPRESSION AUTOMATIQUE DES BLANCS ET SILENCES ───────────────────────
+strip_silence_spec = SoxSpec[StripSilenceInput](
+    id="sox_strip_silence",
+    label="Supprimer les blancs et silences au début et à la fin",
+    input_cls=StripSilenceInput,
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    output_filename_template=lambda u: f"trimmed_silence.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value=f"trimmed_silence.{u.output_format}"),
+        EnumArg(value="silence", enum_values=["silence"]),
+        PatternArg(value=f"1 {u.min_silence_duration} {u.threshold_percent}%"),
+        PatternArg(value=f"-1 {u.min_silence_duration} {u.threshold_percent}%")
+    ]
+)
+
+
+# =============================================================================
+# COLLECTE AUTOMATIQUE DU MODULE
+# =============================================================================
+SOX_DYNAMICS_ACTIONS = collect_specs(__name__)
+__all__ = ["SOX_DYNAMICS_ACTIONS"]============================
+================./specs/sox/actions/actions_timing.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Sep  3 23:43:30 2026
+
+@author: hounsousamuel
+"""
+
+"""
+Workbench Mediakit — Actions SoX : Découpe, Timing, Vitesse et Tonalité.
+
+Ce fichier gère la manipulation temporelle et spectrale des fichiers audio :
+la découpe de segments précis (trim), l'application de fondus progressifs (fade in/out),
+l'insertion de silences en début/fin de piste (pad), la modification indépendante du tempo
+(accélérer/ralentir sans altérer la voix), le changement de tonalité (pitch sans changer la vitesse),
+et l'inversion complète du sens de lecture audio (reverse).
+"""
+
+from workbench.specs.registry import collect_specs
+from workbench.core.subprocess.wb_subprocess_types import (
+    PathArg, EnumArg, FloatArg, IntArg
+)
+from workbench.products.mediakit.specs.sox.base_spec import SoxSpec
+from workbench.products.mediakit.specs.sox.base_model import (
+    TrimAudioInput, FadeAudioInput, PadSilenceInput,
+    ChangeTempoInput, ChangePitchInput, ReverseAudioInput
+)
+
+MIN_SOX_VERSION = (14, 4)
+
+
+# ─── 1. DÉCOUPE DE SEGMENT AUDIO (TRIM) ──────────────────────────────────────
+trim_audio_spec = SoxSpec[TrimAudioInput](
+    id="sox_trim_audio",
+    label="Découper un extrait audio (point de départ et durée)",
+    input_cls=TrimAudioInput,
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    output_filename_template=lambda u: f"trimmed.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value=f"trimmed.{u.output_format}"),
+        EnumArg(value="trim", enum_values=["trim"]),
+        FloatArg(value=u.start_seconds, min_value=0.0),
+        FloatArg(value=u.duration_seconds, min_value=0.01)
+    ]
+)
+
+
+# ─── 2. FONDUS ENTRANT ET SORTANT (FADE IN / OUT) ────────────────────────────
+fade_audio_spec = SoxSpec[FadeAudioInput](
+    id="sox_fade_audio",
+    label="Appliquer des fondus progressifs en entrée et sortie (Fade in/out)",
+    input_cls=FadeAudioInput,
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    output_filename_template=lambda u: f"faded.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value=f"faded.{u.output_format}"),
+        EnumArg(value="fade", enum_values=["fade"]),
+        EnumArg(value=u.curve, enum_values=["t", "q", "h"]),
+        FloatArg(value=u.fade_in_s, min_value=0.0),
+        FloatArg(value=0.0),  # 0.0 indique que le fade-out se calcule par rapport à la fin du fichier
+        FloatArg(value=u.fade_out_s, min_value=0.0)
+    ]
+)
+
+
+# ─── 3. AJOUTER DES SILENCES EN DÉBUT / FIN (PAD) ────────────────────────────
+pad_silence_spec = SoxSpec[PadSilenceInput](
+    id="sox_pad_silence",
+    label="Ajouter des silences au début ou à la fin d'une piste audio",
+    input_cls=PadSilenceInput,
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    output_filename_template=lambda u: f"padded.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value=f"padded.{u.output_format}"),
+        EnumArg(value="pad", enum_values=["pad"]),
+        FloatArg(value=u.pad_start_s, min_value=0.0),
+        FloatArg(value=u.pad_end_s, min_value=0.0)
+    ]
+)
+
+
+# ─── 4. MODIFIER LE TEMPO SANS CHANGER LA HAUTEUR (TEMPO) ────────────────────
+change_tempo_spec = SoxSpec[ChangeTempoInput](
+    id="sox_change_tempo",
+    label="Accélérer ou ralentir l'audio sans modifier la tonalité (garder la voix naturelle)",
+    input_cls=ChangeTempoInput,
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    output_filename_template=lambda u: f"tempo_adjusted.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value=f"tempo_adjusted.{u.output_format}"),
+        EnumArg(value="tempo", enum_values=["tempo"]),
+        FloatArg(value=u.factor, min_value=0.5, max_value=2.5)
+    ]
+)
+
+
+# ─── 5. MODIFIER LA TONALITÉ SANS CHANGER LE TEMPO (PITCH) ───────────────────
+change_pitch_spec = SoxSpec[ChangePitchInput](
+    id="sox_change_pitch",
+    label="Modifier la tonalité / hauteur de voix (sans altérer la vitesse)",
+    input_cls=ChangePitchInput,
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    output_filename_template=lambda u: f"pitch_adjusted.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value=f"pitch_adjusted.{u.output_format}"),
+        EnumArg(value="pitch", enum_values=["pitch"]),
+        IntArg(value=u.cents, min_value=-1200, max_value=1200)
+    ]
+)
+
+
+# ─── 6. LECTURE INVERSÉE (REVERSE) ───────────────────────────────────────────
+reverse_audio_spec = SoxSpec[ReverseAudioInput](
+    id="sox_reverse_audio",
+    label="Inverser le sens de lecture du fichier audio (effet miroir / rewind)",
+    input_cls=ReverseAudioInput,
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    output_filename_template=lambda u: f"reversed.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value=f"reversed.{u.output_format}"),
+        EnumArg(value="reverse", enum_values=["reverse"])
+    ]
+)
+
+
+# =============================================================================
+# COLLECTE AUTOMATIQUE DU MODULE
+# =============================================================================
+SOX_TIMING_ACTIONS = collect_specs(__name__)
+__all__ = ["SOX_TIMING_ACTIONS"]============================
+================./specs/sox/actions/actions_eq.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Sep  3 23:43:43 2026
+
+@author: hounsousamuel
+"""
+
+"""
+Workbench Mediakit — Actions SoX : Égalisation et Filtres Fréquentiels.
+
+Ce fichier gère le filtrage fréquentiel et l'égalisation sonore :
+l'ajustement rapide des basses et des aigus (Bass & Treble en dB),
+le filtrage passe-bas pour adoucir les sons agressifs, le filtrage passe-haut
+pour supprimer les vibrations sourdes et bruits de micro (rumble), ainsi que
+l'égalisation paramétrique chirurgicale (fréquence, largeur de bande et gain).
+"""
+
+from workbench.specs.registry import collect_specs
+from workbench.core.subprocess.wb_subprocess_types import (
+    PathArg, EnumArg, FloatArg, IntArg
+)
+from workbench.products.mediakit.specs.sox.base_spec import SoxSpec
+from workbench.products.mediakit.specs.sox.base_model import (
+    BassTrebleInput, LowPassFilterInput, HighPassFilterInput, ParametricEqualizerInput
+)
+
+MIN_SOX_VERSION = (14, 4)
+
+
+# ─── 1. ÉGALISEUR BASS & TREBLE RAPIDE ───────────────────────────────────────
+bass_treble_spec = SoxSpec[BassTrebleInput](
+    id="sox_bass_treble",
+    label="Ajuster les basses et les aigus (booster ou couper en dB)",
+    input_cls=BassTrebleInput,
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    output_filename_template=lambda u: f"eq_bass_treble.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value=f"eq_bass_treble.{u.output_format}"),
+        EnumArg(value="bass", enum_values=["bass"]),
+        FloatArg(value=u.bass_db, min_value=-20.0, max_value=20.0),
+        EnumArg(value="treble", enum_values=["treble"]),
+        FloatArg(value=u.treble_db, min_value=-20.0, max_value=20.0)
+    ]
+)
+
+
+# ─── 2. FILTRE PASSE-BAS (LOW-PASS) ──────────────────────────────────────────
+lowpass_spec = SoxSpec[LowPassFilterInput](
+    id="sox_lowpass_filter",
+    label="Filtre passe-bas (couper les hautes fréquences stridentes)",
+    input_cls=LowPassFilterInput,
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    output_filename_template=lambda u: f"lowpassed.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value=f"lowpassed.{u.output_format}"),
+        EnumArg(value="lowpass", enum_values=["lowpass"]),
+        IntArg(value=u.cutoff_hz, min_value=200, max_value=20000)
+    ]
+)
+
+
+# ─── 3. FILTRE PASSE-HAUT (HIGH-PASS) ─────────────────────────────────────────
+highpass_spec = SoxSpec[HighPassFilterInput](
+    id="sox_highpass_filter",
+    label="Filtre passe-haut (supprimer les bruits sourds et vibrations micro < 100 Hz)",
+    input_cls=HighPassFilterInput,
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    output_filename_template=lambda u: f"highpassed.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value=f"highpassed.{u.output_format}"),
+        EnumArg(value="highpass", enum_values=["highpass"]),
+        IntArg(value=u.cutoff_hz, min_value=20, max_value=5000)
+    ]
+)
+
+
+# ─── 4. ÉGALISEUR PARAMÉTRIQUE DE PRÉCISION ──────────────────────────────────
+parametric_equalizer_spec = SoxSpec[ParametricEqualizerInput](
+    id="sox_parametric_equalizer",
+    label="Égaliseur paramétrique chirurgical (fréquence centrale, largeur et gain)",
+    input_cls=ParametricEqualizerInput,
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    output_filename_template=lambda u: f"parametric_eq.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value=f"parametric_eq.{u.output_format}"),
+        EnumArg(value="equalizer", enum_values=["equalizer"]),
+        IntArg(value=u.frequency_hz, min_value=40, max_value=16000),
+        IntArg(value=u.bandwidth_hz, min_value=10, max_value=4000),
+        FloatArg(value=u.gain_db, min_value=-24.0, max_value=24.0)
+    ]
+)
+
+
+# =============================================================================
+# COLLECTE AUTOMATIQUE DU MODULE
+# =============================================================================
+SOX_EQ_ACTIONS = collect_specs(__name__)
+__all__ = ["SOX_EQ_ACTIONS"]============================
+================./specs/sox/actions/actions_effects.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Sep  3 23:44:03 2026
+
+@author: hounsousamuel
+"""
+
+"""
+Workbench Mediakit — Actions SoX : Effets Acoustiques et Traitement Spatial.
+
+Ce fichier gère les effets audionumériques créatifs et d'immersion :
+la réverbération acoustique pour simuler la résonance de pièces réelles,
+l'effet d'écho et de délai temporel, le chorus multi-voix pour enrichir
+le timbre sonore, et l'overdrive pour apporter une saturation harmonique chaleureuse.
+"""
+
+from workbench.specs.registry import collect_specs
+from workbench.core.subprocess.wb_subprocess_types import (
+    PathArg, EnumArg, IntArg, FloatArg, PatternArg
+)
+from workbench.products.mediakit.specs.sox.base_spec import SoxSpec
+from workbench.products.mediakit.specs.sox.base_model import (
+    ReverbAudioInput, EchoAudioInput, ChorusAudioInput, OverdriveAudioInput
+)
+
+MIN_SOX_VERSION = (14, 4)
+
+
+# ─── 1. RÉVERBÉRATION ACOUSTIQUE (REVERB) ───────────────────────────────────
+reverb_audio_spec = SoxSpec[ReverbAudioInput](
+    id="sox_reverb_audio",
+    label="Appliquer une réverbération de studio (simulation d'espace acoustique)",
+    input_cls=ReverbAudioInput,
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    output_filename_template=lambda u: f"reverbed.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value=f"reverbed.{u.output_format}"),
+        EnumArg(value="reverb", enum_values=["reverb"]),
+        IntArg(value=u.reverberance, min_value=0, max_value=100),
+        IntArg(value=u.damping, min_value=0, max_value=100)
+    ]
+)
+
+
+# ─── 2. ÉCHO / DÉLAI SPATIAL (ECHO) ──────────────────────────────────────────
+echo_audio_spec = SoxSpec[EchoAudioInput](
+    id="sox_echo_audio",
+    label="Ajouter un effet d'écho et de délai rythmique",
+    input_cls=EchoAudioInput,
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    output_filename_template=lambda u: f"echoed.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value=f"echoed.{u.output_format}"),
+        EnumArg(value="echo", enum_values=["echo"]),
+        FloatArg(value=0.8),               # Gain d'entrée
+        FloatArg(value=0.88),              # Gain de sortie
+        IntArg(value=u.delay_ms, min_value=50, max_value=2000),
+        FloatArg(value=u.decay, min_value=0.1, max_value=0.9)
+    ]
+)
+
+
+# ─── 3. CHORUS (ÉPAISSIR LE TIMBRE VOCAL / INSTRUMENTAL) ────────────────────
+_CHORUS_PROFILES = {
+    "subtle": "0.7 0.9 55 0.4 0.25 2 -t",
+    "medium": "0.6 0.9 50 0.4 0.25 2 -t 60 0.32 0.4 2.3 -t",
+    "heavy":  "0.5 0.9 50 0.4 0.25 2 -t 60 0.32 0.4 2.3 -t 40 0.3 0.3 1.5 -s"
+}
+
+chorus_audio_spec = SoxSpec[ChorusAudioInput](
+    id="sox_chorus_audio",
+    label="Effet Chorus (épaissir le son en simulant plusieurs sources simultanées)",
+    input_cls=ChorusAudioInput,
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    output_filename_template=lambda u: f"chorus.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value=f"chorus.{u.output_format}"),
+        EnumArg(value="chorus", enum_values=["chorus"]),
+        PatternArg(value=_CHORUS_PROFILES[u.intensity])
+    ]
+)
+
+
+# ─── 4. OVERDRIVE (DISTORSION ET CHALEUR HARMONIQUE) ─────────────────────────
+overdrive_audio_spec = SoxSpec[OverdriveAudioInput](
+    id="sox_overdrive_audio",
+    label="Saturation Overdrive (ajouter de la distorsion et de la chaleur analogique)",
+    input_cls=OverdriveAudioInput,
+    validate_arg=True,
+    min_version=MIN_SOX_VERSION,
+    output_filename_template=lambda u: f"overdriven.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value=f"overdriven.{u.output_format}"),
+        EnumArg(value="overdrive", enum_values=["overdrive"]),
+        IntArg(value=u.gain_db, min_value=1, max_value=40),
+        IntArg(value=u.colour, min_value=0, max_value=100)
+    ]
+)
+
+
+# =============================================================================
+# COLLECTE AUTOMATIQUE DU MODULE
+# =============================================================================
+SOX_EFFECTS_ACTIONS = collect_specs(__name__)
+__all__ = ["SOX_EFFECTS_ACTIONS"]============================
+================./specs/magick/base_spec.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Sep  1 18:14:25 2026
+
+@author: hounsousamuel
+"""
+
+from pathlib import Path
+from typing import ClassVar
+
+from workbench.specs.specs import ActionSpec, InputT
+from workbench.core.subprocess.engine import resolve_sandboxed_path
+from workbench.core.subprocess.wb_subprocess_types import Arg, EnumArg
+from workbench.products.mediakit.specs.magick.base_model import BaseMagickActionInput
+from workbench.products.mediakit.mk_utils.utils import is_image_file
+from workbench.core.subprocess.version_checker import (
+    Config as BinVersionCheckerConfig,
+)
+
+MAGICK_CONFIG = BinVersionCheckerConfig(
+    **{"cmd": "--version", "marker": "", "tool_name": "ImageMagick"}
+)
+class IsNotImageFile(Exception):
+    pass
+
+
+class MagickSpec(ActionSpec[InputT]):
+    tool: str = "magick"
+    binary_config: BinVersionCheckerConfig = MAGICK_CONFIG
+    
+    # Limites de ressources imposées à TOUTE commande magick — protège
+    # contre les "bombes de décompression" (une petite image compressée qui,
+    # une fois décompressée, consomme des dizaines de Go de RAM), et contre
+    # un traitement qui tournerait indéfiniment sur un fichier piégé.
+    # C'est l'équivalent, pour magick, de -protocol_whitelist pour ffmpeg.
+    SECURITY_ARGS: ClassVar[list] = [
+        EnumArg(flag="-limit", value="memory", enum_values=["memory"]),
+        EnumArg(flag="", value="512MiB", enum_values=["512MiB"]),
+        EnumArg(flag="-limit", value="time", enum_values=["time"]),
+        EnumArg(flag="", value="60", enum_values=["60"]),
+    ]
+
+    def full_args(self, user_input: InputT) -> list[Arg]:
+        """
+        ⚠️ Toujours utiliser full_args() pour construire la commande finale,
+        jamais build_args() directement — sinon les limites de ressources ne
+        sont pas incluses.
+        """
+        return [*self.SECURITY_ARGS, *self.build_args(user_input)]
+
+    def validate_args(self, user_input: BaseMagickActionInput, workdir: Path) -> None:
+        if not isinstance(user_input, BaseMagickActionInput):
+            raise ValueError("Input should be a valid BaseMagickActionInput !")
+
+        if self.validate_arg:
+            resolved = resolve_sandboxed_path(user_input.input_file, workdir)
+            if not is_image_file(str(resolved)):
+                raise IsNotImageFile(
+                    f"{user_input.input_file} ne semble pas être un fichier image"
+                )============================
+================./specs/magick/base_model.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Sep  1 18:24:36 2026
+
+@author: hounsousamuel
+"""
+
+"""
+Workbench Mediakit — Modèles d'input Pydantic complets pour toutes les actions ImageMagick.
+"""
+
+from typing import Literal
+from pydantic import BaseModel, Field
+from workbench.specs.uploads import UploadRef
+
+
+class BaseMagickActionInput(BaseModel):
+    """Socle commun pour toute action ImageMagick avec fichier image source."""
+    input_file: str = UploadRef(description="Fichier image source principal")
+
+
+# ─── A. CONVERSION & OPTIMISATION WEB ───
+class ConvertFormatInput(BaseMagickActionInput):
+    output_format: Literal["webp", "avif", "png", "jpg", "bmp", "tiff"] = "webp"
+
+
+class CompressQualityInput(BaseMagickActionInput):
+    quality: int = Field(default=82, ge=1, le=100, description="Niveau de qualité JPEG/WebP (1-100)")
+    output_format: Literal["webp", "jpg"] = "webp"
+
+
+class StripMetadataInput(BaseMagickActionInput):
+    output_format: Literal["jpg", "png", "webp"] = "jpg"
+
+
+class GenerateFaviconInput(BaseMagickActionInput):
+    pass
+
+
+# ─── B. GÉOMÉTRIE & CADRAGE ───
+class ResizeImageInput(BaseMagickActionInput):
+    size: Literal["25%", "50%", "75%", "1920x1080", "1280x720", "800x600", "500x500", "256x256"] = "800x600"
+    output_format: Literal["png", "jpg", "webp"] = "png"
+
+
+class CropImageInput(BaseMagickActionInput):
+    width: int = Field(default=400, ge=10)
+    height: int = Field(default=400, ge=10)
+    x: int = Field(default=0, ge=0)
+    y: int = Field(default=0, ge=0)
+    output_format: Literal["png", "jpg", "webp"] = "png"
+
+
+class SquareThumbnailInput(BaseMagickActionInput):
+    dimension: Literal["128", "256", "512", "1024"] = "512"
+    output_format: Literal["png", "jpg", "webp"] = "jpg"
+
+
+class CanvasExtentInput(BaseMagickActionInput):
+    target_dimension: Literal["1920x1080", "1280x720", "1080x1080", "800x600"] = "1920x1080"
+    background_color: Literal["black", "white", "gray", "transparent"] = "black"
+    output_format: Literal["png", "jpg", "webp"] = "jpg"
+
+
+class RotateImageInput(BaseMagickActionInput):
+    degrees: Literal["90", "180", "270"] = "90"
+    output_format: Literal["png", "jpg", "webp"] = "png"
+
+
+class FlipFlopInput(BaseMagickActionInput):
+    direction: Literal["horizontal", "vertical"] = "horizontal"
+    output_format: Literal["png", "jpg", "webp"] = "png"
+
+
+class AutoOrientInput(BaseMagickActionInput):
+    output_format: Literal["jpg", "png", "webp"] = "jpg"
+
+
+# ─── C. COULEURS & EXPOSITION ───
+class GrayscaleInput(BaseMagickActionInput):
+    output_format: Literal["png", "jpg", "webp"] = "png"
+
+
+class SepiaToneInput(BaseMagickActionInput):
+    threshold_percent: int = Field(default=80, ge=30, le=95, description="Intensité du sépia (80% recommandé)")
+    output_format: Literal["jpg", "png", "webp"] = "jpg"
+
+
+class BrightnessContrastInput(BaseMagickActionInput):
+    brightness: int = Field(default=10, ge=-50, le=50, description="Ajustement luminosité (-50 à +50)")
+    contrast: int = Field(default=15, ge=-50, le=50, description="Ajustement contraste (-50 à +50)")
+    output_format: Literal["jpg", "png", "webp"] = "jpg"
+
+
+class AutoLevelInput(BaseMagickActionInput):
+    output_format: Literal["jpg", "png", "webp"] = "jpg"
+
+
+class NegateColorsInput(BaseMagickActionInput):
+    output_format: Literal["png", "jpg", "webp"] = "png"
+
+
+class ColorizeTintInput(BaseMagickActionInput):
+    color: Literal["red", "blue", "green", "gold", "cyan", "magenta"] = "blue"
+    percent: int = Field(default=35, ge=5, le=90, description="Pourcentage de teinte")
+    output_format: Literal["jpg", "png", "webp"] = "jpg"
+
+
+# ─── D. FILTRES & EFFETS ───
+class BlurImageInput(BaseMagickActionInput):
+    radius: int = Field(default=0, ge=0, le=20)
+    sigma: int = Field(default=8, ge=1, le=50)
+    output_format: Literal["png", "jpg", "webp"] = "png"
+
+
+class SharpenImageInput(BaseMagickActionInput):
+    radius: int = Field(default=0, ge=0, le=10)
+    sigma: int = Field(default=3, ge=1, le=20)
+    output_format: Literal["png", "jpg", "webp"] = "png"
+
+
+class PixelateImageInput(BaseMagickActionInput):
+    pixel_size: Literal["10%", "5%", "2%"] = "5%"
+    output_format: Literal["png", "jpg", "webp"] = "jpg"
+
+
+class VignetteInput(BaseMagickActionInput):
+    radius: int = Field(default=0, ge=0, le=50)
+    sigma: int = Field(default=20, ge=5, le=100)
+    output_format: Literal["jpg", "png", "webp"] = "jpg"
+
+
+class OilPaintInput(BaseMagickActionInput):
+    radius: int = Field(default=4, ge=1, le=12, description="Rayon des coups de pinceau")
+    output_format: Literal["jpg", "png", "webp"] = "jpg"
+
+
+class CharcoalInput(BaseMagickActionInput):
+    radius: int = Field(default=3, ge=1, le=10)
+    output_format: Literal["jpg", "png", "webp"] = "jpg"
+
+
+# ─── E. INCRUSTATIONS & CADRES ───
+class WatermarkImageInput(BaseMagickActionInput):
+    watermark_file: str = UploadRef(description="Image PNG du logo transparent")
+    position: Literal["center", "north", "south", "east", "west", "southeast", "southwest", "northeast", "northwest"] = "southeast"
+    output_format: Literal["png", "jpg", "webp"] = "png"
+
+
+class WatermarkTextInput(BaseMagickActionInput):
+    text: str = Field(default="COPYRIGHT", max_length=50)
+    position: Literal["center", "south", "southeast", "southwest", "north"] = "southeast"
+    pointsize: int = Field(default=28, ge=10, le=150)
+    color: Literal["white", "black", "red", "gold", "yellow"] = "white"
+    output_format: Literal["jpg", "png", "webp"] = "jpg"
+
+
+class AddBorderInput(BaseMagickActionInput):
+    thickness: int = Field(default=15, ge=1, le=100)
+    color: Literal["black", "white", "gray", "red", "blue", "gold"] = "black"
+    output_format: Literal["png", "jpg", "webp"] = "png"============================
+================./specs/magick/actions/__init__.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Sep  2 10:43:04 2026
+
+@author: hounsousamuel
+"""
+
+"""
+Workbench Mediakit — Spécifications et catalogue complet ImageMagick.
+"""
+
+from workbench.products.mediakit.specs.magick.actions.actions_convert import MAGICK_CONVERT_ACTIONS
+from workbench.products.mediakit.specs.magick.actions.actions_geometry import MAGICK_GEOMETRY_ACTIONS
+from workbench.products.mediakit.specs.magick.actions.actions_color import MAGICK_COLOR_ACTIONS
+from workbench.products.mediakit.specs.magick.actions.actions_effects import MAGICK_EFFECTS_ACTIONS
+from workbench.products.mediakit.specs.magick.actions.actions_overlays import MAGICK_OVERLAYS_ACTIONS
+from workbench.wb_utils.merger import merge
+
+# ─── DICT 1 : MERGE TOTAL À PLAT (Recherche O(1) rapide par action_id) ───────
+MAGICK_ACTIONS = merge(
+    MAGICK_CONVERT_ACTIONS,
+    MAGICK_GEOMETRY_ACTIONS,
+    MAGICK_COLOR_ACTIONS,
+    MAGICK_EFFECTS_ACTIONS,
+    MAGICK_OVERLAYS_ACTIONS,
+)
+
+
+# ─── DICT 2 : CATALOGUE GRANULAIRE STRUCTURÉ (Pour les onglets et l'UI) ──────
+MAGICK_CATALOG = {
+    "all_cat": MAGICK_ACTIONS,
+    "categories": {
+        "convert": {
+            "description": (
+                "Transcodage et optimisation de formats : conversion vers les formats modernes du web "
+                "(WebP, AVIF, PNG, JPG, TIFF, BMP), compression par réduction de qualité, suppression des métadonnées "
+                "privées EXIF/GPS pour alléger les fichiers et génération de favicons multi-tailles ICO."
+            ),
+            "values": MAGICK_CONVERT_ACTIONS,
+        },
+        "geometry": {
+            "description": (
+                "Transformations spatiales et dimensions : redimensionnement par pourcentages ou résolutions cibles, "
+                "rognage manuel rectangulaire (crop), création d'avatars carrés centrés sans déformation, extension de "
+                "toile avec bandes de couleur (letterbox), rotations, effet miroir et correction d'orientation EXIF."
+            ),
+            "values": MAGICK_GEOMETRY_ACTIONS,
+        },
+        "color": {
+            "description": (
+                "Étalonnage colorimétrique et exposition : conversion en noir et blanc pur, effet virage sépia vintage, "
+                "ajustement précis de luminosité et contraste, égalisation dynamique automatique des niveaux (Auto-Level), "
+                "inversion en négatif et colorisation par teinte monochrome."
+            ),
+            "values": MAGICK_COLOR_ACTIONS,
+        },
+        "effects": {
+            "description": (
+                "Filtres visuels et dégradations artistiques : flou gaussien (adoucissement ou anonymisation), "
+                "accentuation de netteté des détails, mosaïque de pixellisation (censure), effet vignettage sombre aux coins, "
+                "rendu artistique de peinture à l'huile et esquisse au fusain."
+            ),
+            "values": MAGICK_EFFECTS_ACTIONS,
+        },
+        "overlays": {
+            "description": (
+                "Superpositions et enrichissements graphiques : incrustation de logos transparents en filigrane (Watermark PNG), "
+                "ajout de mentions textuelles de copyright avec positionnement paramétrable, et ajout de cadres ou bordures épaisses."
+            ),
+            "values": MAGICK_OVERLAYS_ACTIONS,
+        },
+    },
+}
+
+
+__all__ = [
+    "MAGICK_ACTIONS",
+    "MAGICK_CATALOG",
+]============================
+================./specs/magick/actions/actions_convert.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Sep  2 10:43:08 2026
+
+@author: hounsousamuel
+"""
+
+
+"""
+Workbench Mediakit — Actions ImageMagick : Conversion, Compression et Optimisation Web.
+
+Ce fichier gère le transcodage entre formats d'images (WebP, AVIF, PNG, JPG, BMP, TIFF),
+la compression optimisée pour le web par réduction contrôlée de qualité,
+la suppression définitive des métadonnées privées EXIF/GPS (strip) pour alléger les fichiers,
+et la génération de favicons multi-tailles au format standard ICO.
+"""
+
+from workbench.specs.registry import collect_specs
+from workbench.core.subprocess.wb_subprocess_types import (
+    PathArg, IntArg, BoolArg, PatternArg
+)
+from workbench.products.mediakit.specs.magick.base_spec import MagickSpec
+from workbench.products.mediakit.specs.magick.base_model import (
+    ConvertFormatInput, CompressQualityInput, StripMetadataInput, GenerateFaviconInput
+)
+
+MIN_MAGICK_VERSION = (7, 0)
+
+
+# ─── 1. TRANSCODAGE DE FORMAT D'IMAGE ────────────────────────────────────────
+convert_format_spec = MagickSpec[ConvertFormatInput](
+    id="magick_convert_format",
+    label="Convertir le format d'image (WebP, AVIF, PNG, JPG, TIFF, BMP)",
+    input_cls=ConvertFormatInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template=lambda u: f"converted.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value=f"converted.{u.output_format}")
+    ]
+)
+
+
+# ─── 2. COMPRESSION DE QUALITÉ OPTIMISÉE ─────────────────────────────────────
+compress_quality_spec = MagickSpec[CompressQualityInput](
+    id="magick_compress_quality",
+    label="Optimiser le poids de l'image (réglage qualité WebP/JPG de 1 à 100)",
+    input_cls=CompressQualityInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template=lambda u: f"compressed.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        IntArg(flag="-quality", value=u.quality, min_value=1, max_value=100),
+        PathArg(value=f"compressed.{u.output_format}")
+    ]
+)
+
+
+# ─── 3. NETTOYAGE DES MÉTADONNÉES EXIF / GPS (STRIP) ─────────────────────────
+strip_metadata_spec = MagickSpec[StripMetadataInput](
+    id="magick_strip_metadata",
+    label="Anonymiser l'image et alléger le poids (suppression des données EXIF et GPS)",
+    input_cls=StripMetadataInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template=lambda u: f"stripped.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        BoolArg(flag="-strip", value=True),
+        PathArg(value=f"stripped.{u.output_format}")
+    ]
+)
+
+
+# ─── 4. GÉNÉRATION D'UN FAVICON ICO MULTI-RÉSOLUTIONS ────────────────────────
+generate_favicon_spec = MagickSpec[GenerateFaviconInput](
+    id="magick_generate_favicon",
+    label="Générer un favicon web multi-tailles (.ico 16x16, 32x32, 48x48)",
+    input_cls=GenerateFaviconInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template="favicon.ico",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PatternArg(flag="-define", value="icon:auto-resize=48,32,16"),
+        PathArg(value="favicon.ico")
+    ]
+)
+
+
+# =============================================================================
+# COLLECTE AUTOMATIQUE DU MODULE
+# =============================================================================
+MAGICK_CONVERT_ACTIONS = collect_specs(__name__)
+__all__ = ["MAGICK_CONVERT_ACTIONS"]============================
+================./specs/magick/actions/actions_edit.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Sep  2 10:43:35 2026
+
+@author: hounsousamuel
+"""
+
+"""Workbench Mediakit — magick : actions d'édition image (resize, compress)."""
+
+from workbench.core.subprocess.wb_subprocess_types import PathArg, EnumArg, IntArg
+from workbench.specs.registry import collect_specs
+from workbench.products.mediakit.specs.magick.base_spec import MagickSpec
+from workbench.products.mediakit.specs.magick.base_model import ResizeImageInput, CompressImageInput
+
+MIN_MAGICK_VERSION = (6, 9)
+
+_RESIZE_CHOICES = ["50%", "75%", "25%", "1920x1080", "1280x720", "800x600"]
+
+
+resize_image = MagickSpec[ResizeImageInput](
+    id="resize_image",
+    label="Redimensionner une image",
+    tool="magick",
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        EnumArg(flag="-resize", value=u.resize_spec, enum_values=_RESIZE_CHOICES),
+        PathArg(value=f"resized.{u.output_format}"),
+    ],
+    output_filename_template=lambda u: f"resized.{u.output_format}",
+    input_cls=ResizeImageInput,
+)
+
+
+compress_image = MagickSpec[CompressImageInput](
+    id="compress_image",
+    label="Compresser une image (réduire sa taille de fichier)",
+    tool="magick",
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        IntArg(flag="-quality", value=u.quality, min_value=1, max_value=100),
+        PathArg(value=f"compressed.{u.output_format}"),
+    ],
+    output_filename_template=lambda u: f"compressed.{u.output_format}",
+    input_cls=CompressImageInput,
+)
+
+
+MAGICK_EDIT_ACTIONS = collect_specs(__name__)============================
+================./specs/magick/actions/actions_geometry.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Sep  3 23:47:35 2026
+
+@author: hounsousamuel
+"""
+
+
+"""
+Workbench Mediakit — Actions ImageMagick : Géométrie, Cadrage et Dimensions.
+
+Ce fichier gère toutes les manipulations spatiales et dimensionnelles :
+le redimensionnement par pourcentages ou résolutions fixes, le rognage libre (crop),
+la création de miniatures carrées parfaites pour profils/avatars, l'extension de toile
+avec bandes de couleur (letterbox), la rotation angulaire, l'effet miroir (flip/flop)
+et la correction automatique d'orientation basée sur les capteurs gyroscopiques EXIF.
+"""
+
+from workbench.specs.registry import collect_specs
+from workbench.core.subprocess.wb_subprocess_types import (
+    PathArg, EnumArg, PatternArg, BoolArg
+)
+from workbench.products.mediakit.specs.magick.base_spec import MagickSpec
+from workbench.products.mediakit.specs.magick.base_model import (
+    ResizeImageInput, CropImageInput, SquareThumbnailInput,
+    CanvasExtentInput, RotateImageInput, FlipFlopInput, AutoOrientInput
+)
+
+MIN_MAGICK_VERSION = (7, 0)
+
+
+# ─── 1. REDIMENSIONNEMENT STANDARD ───────────────────────────────────────────
+resize_image_spec = MagickSpec[ResizeImageInput](
+    id="magick_resize_image",
+    label="Redimensionner l'image (pourcentages ou dimensions cibles)",
+    input_cls=ResizeImageInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template=lambda u: f"resized.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        EnumArg(
+            flag="-resize",
+            value=u.size,
+            enum_values=["25%", "50%", "75%", "1920x1080", "1280x720", "800x600", "500x500", "256x256"]
+        ),
+        PathArg(value=f"resized.{u.output_format}")
+    ]
+)
+
+
+# ─── 2. ROGNAGE RECTANGULAIRE (CROP MANUEL) ──────────────────────────────────
+crop_image_spec = MagickSpec[CropImageInput](
+    id="magick_crop_image",
+    label="Rogner l'image (extraire une zone WxH+X+Y)",
+    input_cls=CropImageInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template=lambda u: f"cropped.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PatternArg(flag="-crop", value=f"{u.width}x{u.height}+{u.x}+{u.y}"),
+        BoolArg(flag="+repage", value=True),
+        PathArg(value=f"cropped.{u.output_format}")
+    ]
+)
+
+
+# ─── 3. MINIATURE CARRÉE AVATAR (SMART CROP CENTRÉ) ──────────────────────────
+square_thumbnail_spec = MagickSpec[SquareThumbnailInput](
+    id="magick_square_thumbnail",
+    label="Créer une miniature carrée centrée (Avatar/Profil sans déformation)",
+    input_cls=SquareThumbnailInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template=lambda u: f"thumbnail_square.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PatternArg(flag="-resize", value=f"{u.dimension}x{u.dimension}^"),
+        EnumArg(flag="-gravity", value="center", enum_values=["center"]),
+        PatternArg(flag="-extent", value=f"{u.dimension}x{u.dimension}"),
+        PathArg(value=f"thumbnail_square.{u.output_format}")
+    ]
+)
+
+
+# ─── 4. EXTENSION DE TOILE / LETTERBOX AVEC FOND ─────────────────────────────
+canvas_extent_spec = MagickSpec[CanvasExtentInput](
+    id="magick_canvas_extent",
+    label="Étendre la toile et ajouter des bandes colorées (Letterbox)",
+    input_cls=CanvasExtentInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template=lambda u: f"canvas_padded.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        EnumArg(flag="-background", value=u.background_color, enum_values=["black", "white", "gray", "transparent"]),
+        EnumArg(flag="-gravity", value="center", enum_values=["center"]),
+        PatternArg(flag="-extent", value=u.target_dimension),
+        PathArg(value=f"canvas_padded.{u.output_format}")
+    ]
+)
+
+
+# ─── 5. ROTATION ANGULAIRE ───────────────────────────────────────────────────
+rotate_image_spec = MagickSpec[RotateImageInput](
+    id="magick_rotate_image",
+    label="Faire pivoter l'image (90°, 180°, 270°)",
+    input_cls=RotateImageInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template=lambda u: f"rotated.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        EnumArg(flag="-rotate", value=u.degrees, enum_values=["90", "180", "270"]),
+        PathArg(value=f"rotated.{u.output_format}")
+    ]
+)
+
+
+# ─── 6. EFFET MIROIR (FLIP / FLOP) ───────────────────────────────────────────
+flip_flop_spec = MagickSpec[FlipFlopInput](
+    id="magick_flip_flop",
+    label="Appliquer un effet miroir (horizontal ou vertical)",
+    input_cls=FlipFlopInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template=lambda u: f"mirrored.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        BoolArg(flag="-flop" if u.direction == "horizontal" else "-flip", value=True),
+        PathArg(value=f"mirrored.{u.output_format}")
+    ]
+)
+
+
+# ─── 7. CORRECTION AUTOMATIQUE DE L'ORIENTATION (EXIF) ───────────────────────
+auto_orient_spec = MagickSpec[AutoOrientInput](
+    id="magick_auto_orient",
+    label="Corriger automatiquement l'orientation selon les métadonnées de l'appareil",
+    input_cls=AutoOrientInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template=lambda u: f"oriented.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        BoolArg(flag="-auto-orient", value=True),
+        PathArg(value=f"oriented.{u.output_format}")
+    ]
+)
+
+
+# =============================================================================
+# COLLECTE AUTOMATIQUE DU MODULE
+# =============================================================================
+MAGICK_GEOMETRY_ACTIONS = collect_specs(__name__)
+__all__ = ["MAGICK_GEOMETRY_ACTIONS"]============================
+================./specs/magick/actions/actions_color.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Sep  3 23:47:50 2026
+
+@author: hounsousamuel
+"""
+
+"""
+Workbench Mediakit — Actions ImageMagick : Couleurs, Exposition et Étalonnage.
+
+Ce fichier gère le traitement colorimétrique et l'exposition des images :
+la conversion en noir et blanc pur, l'application d'un virage sépia vintage,
+l'ajustement combiné de luminosité et de contraste, l'égalisation dynamique
+automatique des niveaux (Auto-Level), l'inversion en négatif et la colorisation par teinte monochrome.
+"""
+
+from workbench.specs.registry import collect_specs
+from workbench.core.subprocess.wb_subprocess_types import (
+    PathArg, EnumArg, PatternArg, BoolArg
+)
+from workbench.products.mediakit.specs.magick.base_spec import MagickSpec
+from workbench.products.mediakit.specs.magick.base_model import (
+    GrayscaleInput, SepiaToneInput, BrightnessContrastInput,
+    AutoLevelInput, NegateColorsInput, ColorizeTintInput
+)
+
+MIN_MAGICK_VERSION = (7, 0)
+
+
+# ─── 1. CONVERSION NOIR & BLANC (GRAYSCALE) ──────────────────────────────────
+grayscale_spec = MagickSpec[GrayscaleInput](
+    id="magick_grayscale",
+    label="Convertir en Noir & Blanc (nuances de gris pures)",
+    input_cls=GrayscaleInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template=lambda u: f"grayscale.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        EnumArg(flag="-colorspace", value="Gray", enum_values=["Gray"]),
+        PathArg(value=f"grayscale.{u.output_format}")
+    ]
+)
+
+
+# ─── 2. VIRAGE SÉPIA VINTAGE ─────────────────────────────────────────────────
+sepia_spec = MagickSpec[SepiaToneInput](
+    id="magick_sepia",
+    label="Appliquer un filtre sépia rétro / vintage",
+    input_cls=SepiaToneInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template=lambda u: f"sepia.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PatternArg(flag="-sepia-tone", value=f"{u.threshold_percent}%"),
+        PathArg(value=f"sepia.{u.output_format}")
+    ]
+)
+
+
+# ─── 3. AJUSTEMENT LUMINOSITÉ & CONTRASTE ────────────────────────────────────
+brightness_contrast_spec = MagickSpec[BrightnessContrastInput](
+    id="magick_brightness_contrast",
+    label="Régler la luminosité et le contraste de l'image",
+    input_cls=BrightnessContrastInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template=lambda u: f"adjusted.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PatternArg(flag="-brightness-contrast", value=f"{u.brightness}x{u.contrast}"),
+        PathArg(value=f"adjusted.{u.output_format}")
+    ]
+)
+
+
+# ─── 4. CORRECTION AUTOMATIQUE DES NIVEAUX (AUTO-LEVEL) ──────────────────────
+auto_level_spec = MagickSpec[AutoLevelInput](
+    id="magick_auto_level",
+    label="Égaliser automatiquement les contrastes et niveaux dynamiques",
+    input_cls=AutoLevelInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template=lambda u: f"auto_leveled.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        BoolArg(flag="-auto-level", value=True),
+        PathArg(value=f"auto_leveled.{u.output_format}")
+    ]
+)
+
+
+# ─── 5. NÉGATIF / INVERSION DES COULEURS ─────────────────────────────────────
+negate_colors_spec = MagickSpec[NegateColorsInput](
+    id="magick_negate_colors",
+    label="Inverser les couleurs (effet négatif photographique)",
+    input_cls=NegateColorsInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template=lambda u: f"negated.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        BoolArg(flag="-negate", value=True),
+        PathArg(value=f"negated.{u.output_format}")
+    ]
+)
+
+
+# ─── 6. TEINTE MONOCHROME (COLORIZE) ─────────────────────────────────────────
+colorize_tint_spec = MagickSpec[ColorizeTintInput](
+    id="magick_colorize_tint",
+    label="Appliquer un filtre de teinte colorée unie (Colorize)",
+    input_cls=ColorizeTintInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template=lambda u: f"tinted.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        EnumArg(flag="-fill", value=u.color, enum_values=["red", "blue", "green", "gold", "cyan", "magenta"]),
+        PatternArg(flag="-colorize", value=f"{u.percent}%"),
+        PathArg(value=f"tinted.{u.output_format}")
+    ]
+)
+
+
+# =============================================================================
+# COLLECTE AUTOMATIQUE DU MODULE
+# =============================================================================
+MAGICK_COLOR_ACTIONS = collect_specs(__name__)
+__all__ = ["MAGICK_COLOR_ACTIONS"]============================
+================./specs/magick/actions/actions_effects.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Sep  3 23:48:08 2026
+
+@author: hounsousamuel
+"""
+
+"""
+Workbench Mediakit — Actions ImageMagick : Effets Artistiques et Anonymisation.
+
+Ce fichier gère les effets visuels appliqués aux pixels :
+le flou gaussien (artistique ou anonymisation), l'accentuation de netteté des détails,
+la pixellisation de censure (mosaïque), le vignettage sombre aux coins,
+l'effet artistique de peinture à l'huile et l'effet dessin au fusain.
+"""
+
+from workbench.specs.registry import collect_specs
+from workbench.core.subprocess.wb_subprocess_types import (
+    PathArg, IntArg, PatternArg
+)
+from workbench.products.mediakit.specs.magick.base_spec import MagickSpec
+from workbench.products.mediakit.specs.magick.base_model import (
+    BlurImageInput, SharpenImageInput, PixelateImageInput,
+    VignetteInput, OilPaintInput, CharcoalInput
+)
+
+MIN_MAGICK_VERSION = (7, 0)
+
+
+# ─── 1. FLOU GAUSSIEN (BLUR) ─────────────────────────────────────────────────
+blur_spec = MagickSpec[BlurImageInput](
+    id="magick_blur_gaussian",
+    label="Appliquer un flou gaussien (adoucir ou anonymiser)",
+    input_cls=BlurImageInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template=lambda u: f"blurred.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PatternArg(flag="-blur", value=f"{u.radius}x{u.sigma}"),
+        PathArg(value=f"blurred.{u.output_format}")
+    ]
+)
+
+
+# ─── 2. ACCENTUATION DE LA NETTETÉ (SHARPEN) ─────────────────────────────────
+sharpen_spec = MagickSpec[SharpenImageInput](
+    id="magick_sharpen",
+    label="Augmenter la netteté et la définition des détails",
+    input_cls=SharpenImageInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template=lambda u: f"sharpened.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PatternArg(flag="-sharpen", value=f"{u.radius}x{u.sigma}"),
+        PathArg(value=f"sharpened.{u.output_format}")
+    ]
+)
+
+
+# ─── 3. PIXELLISATION / MOSAÏQUE DE CENSURE ──────────────────────────────────
+_SCALE_MAP = {"10%": "1000%", "5%": "2000%", "2%": "5000%"}
+
+pixelate_spec = MagickSpec[PixelateImageInput](
+    id="magick_pixelate",
+    label="Pixelliser l'image (effet mosaïque de censure / anonymisation)",
+    input_cls=PixelateImageInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template=lambda u: f"pixelated.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PatternArg(flag="-scale", value=u.pixel_size),
+        PatternArg(flag="-scale", value=_SCALE_MAP[u.pixel_size]),
+        PathArg(value=f"pixelated.{u.output_format}")
+    ]
+)
+
+
+# ─── 4. VIGNETTAGE PHOTO ─────────────────────────────────────────────────────
+vignette_spec = MagickSpec[VignetteInput](
+    id="magick_vignette",
+    label="Ajouter un vignettage photo (assombrissement progressif des coins)",
+    input_cls=VignetteInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template=lambda u: f"vignetted.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PatternArg(flag="-vignette", value=f"{u.radius}x{u.sigma}"),
+        PathArg(value=f"vignetted.{u.output_format}")
+    ]
+)
+
+
+# ─── 5. EFFET PEINTURE À L'HUILE ─────────────────────────────────────────────
+oil_paint_spec = MagickSpec[OilPaintInput](
+    id="magick_oil_paint",
+    label="Appliquer un effet artistique de peinture à l'huile",
+    input_cls=OilPaintInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template=lambda u: f"oil_painted.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        IntArg(flag="-paint", value=u.radius, min_value=1, max_value=12),
+        PathArg(value=f"oil_painted.{u.output_format}")
+    ]
+)
+
+
+# ─── 6. EFFET DESSIN AU FUSAIN ───────────────────────────────────────────────
+charcoal_spec = MagickSpec[CharcoalInput](
+    id="magick_charcoal",
+    label="Transformer l'image en esquisse au fusain / dessin au crayon",
+    input_cls=CharcoalInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template=lambda u: f"charcoal.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        IntArg(flag="-charcoal", value=u.radius, min_value=1, max_value=10),
+        PathArg(value=f"charcoal.{u.output_format}")
+    ]
+)
+
+
+# =============================================================================
+# COLLECTE AUTOMATIQUE DU MODULE
+# =============================================================================
+MAGICK_EFFECTS_ACTIONS = collect_specs(__name__)
+__all__ = ["MAGICK_EFFECTS_ACTIONS"]============================
+================./specs/magick/actions/actions_overlays.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Sep  3 23:48:27 2026
+
+@author: hounsousamuel
+"""
+
+"""
+Workbench Mediakit — Actions ImageMagick : Incrustations, Filigranes et Bordures.
+
+Ce fichier gère la superposition d'éléments sur l'image :
+l'incrustation de logo transparent (filigrane image), l'ajout de filigrane
+textuel personnalisé sécurisé avec positionnement automatique,
+et l'ajout de cadres ou bordures épaisses colorées.
+"""
+
+from workbench.specs.registry import collect_specs
+from workbench.core.subprocess.wb_subprocess_types import (
+    PathArg, EnumArg, IntArg, PatternArg, BoolArg
+)
+from workbench.products.mediakit.specs.magick.base_spec import MagickSpec
+from workbench.products.mediakit.specs.magick.base_model import (
+    WatermarkImageInput, WatermarkTextInput, AddBorderInput
+)
+
+MIN_MAGICK_VERSION = (7, 0)
+
+
+# ─── 1. INCRUSTATION DE LOGO FILIGRANE IMAGE (WATERMARK PNG) ────────────────
+watermark_image_spec = MagickSpec[WatermarkImageInput](
+    id="magick_watermark_image",
+    label="Incruster un logo en filigrane (PNG avec transparence)",
+    input_cls=WatermarkImageInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template=lambda u: f"watermarked.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        PathArg(value=u.watermark_file, must_exist=True),
+        EnumArg(
+            flag="-gravity",
+            value=u.position,
+            enum_values=["center", "north", "south", "east", "west", "southeast", "southwest", "northeast", "northwest"]
+        ),
+        BoolArg(flag="-composite", value=True),
+        PathArg(value=f"watermarked.{u.output_format}")
+    ]
+)
+
+
+# ─── 2. FILIGRANE TEXTUEL SÉCURISÉ ──────────────────────────────────────────
+watermark_text_spec = MagickSpec[WatermarkTextInput](
+    id="magick_watermark_text",
+    label="Ajouter un filigrane textuel personnalisé",
+    input_cls=WatermarkTextInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template=lambda u: f"text_watermarked.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        EnumArg(
+            flag="-gravity",
+            value=u.position,
+            enum_values=["center", "south", "southeast", "southwest", "north"]
+        ),
+        IntArg(flag="-pointsize", value=u.pointsize, min_value=10, max_value=150),
+        EnumArg(flag="-fill", value=u.color, enum_values=["white", "black", "red", "gold", "yellow"]),
+        PatternArg(flag="-annotate", value="+15+15"),
+        PatternArg(value=u.text, allowed_regex=r"^[a-zA-Z0-9_\- @#\.\+]+$"),
+        PathArg(value=f"text_watermarked.{u.output_format}")
+    ]
+)
+
+
+# ─── 3. AJOUT D'UNE BORDURE / D'UN CADRE COLORÉ ──────────────────────────────
+add_border_spec = MagickSpec[AddBorderInput](
+    id="magick_add_border",
+    label="Ajouter un cadre ou une bordure colorée autour de l'image",
+    input_cls=AddBorderInput,
+    validate_arg=True,
+    min_version=MIN_MAGICK_VERSION,
+    output_filename_template=lambda u: f"bordered.{u.output_format}",
+    build_args=lambda u: [
+        PathArg(value=u.input_file, must_exist=True),
+        EnumArg(flag="-bordercolor", value=u.color, enum_values=["black", "white", "gray", "red", "blue", "gold"]),
+        PatternArg(flag="-border", value=f"{u.thickness}x{u.thickness}"),
+        PathArg(value=f"bordered.{u.output_format}")
+    ]
+)
+
+
+# =============================================================================
+# COLLECTE AUTOMATIQUE DU MODULE
+# =============================================================================
+MAGICK_OVERLAYS_ACTIONS = collect_specs(__name__)
+__all__ = ["MAGICK_OVERLAYS_ACTIONS"]============================
+================./specs/utils.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Sep  3 23:51:38 2026
+
+@author: hounsousamuel
+"""
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Workbench Mediakit — Utilitaires du catalogue et résolution des specs.
+"""
+
+from workbench.products.mediakit.specs.ffmpeg.actions import FFMPEG_CATALOG
+from workbench.products.mediakit.specs.ffmpeg.base_spec import FFMPEG_CONFIG
+from workbench.products.mediakit.specs.sox.actions import SOX_CATALOG
+from workbench.products.mediakit.specs.sox.base_spec import SOX_CONFIG
+from workbench.products.mediakit.specs.magick.actions import MAGICK_CATALOG
+from workbench.products.mediakit.specs.magick.base_spec import MAGICK_CONFIG
+from workbench.products.mediakit.specs.pipelines import PIPELINE_CATALOG
+from workbench.specs.pipeline_spec import PipelineSpec
+from workbench.wb_utils.merger import merge
+
+ACTION_ALL_CAT = merge(
+    FFMPEG_CATALOG["all_cat"],
+    SOX_CATALOG["all_cat"],
+    MAGICK_CATALOG["all_cat"]
+)
+
+PIPELINE_ALL_CAT = merge(
+    PIPELINE_CATALOG["all_cat"],
+)
+
+ALL_CAT = merge(
+    ACTION_ALL_CAT,
+    PIPELINE_ALL_CAT
+)
+
+def summarize_spec(spec) -> dict:
+    """Convertit une Spec (ActionSpec ou PipelineSpec) en dict JSON-compatible."""
+    if isinstance(spec, PipelineSpec):
+        return {
+            "id": spec.id,
+            "label": spec.label,
+            "type": "pipeline",
+            "steps": [
+                {"id": s.id, "tool": s.action.tool, "action_id": s.action.id, "label": s.action.label}
+                for s in spec.steps
+            ],
+        }
+    return {
+        "id": spec.id,
+        "label": spec.label,
+        "type": "action",
+        "tool": spec.tool,
+        "min_version": spec.min_version,
+    }
+
+def _summarize_catalog_dict(catalog_dict: dict) -> dict:
+    """Résume récursivement un catalogue d'outil (all_cat + categories)."""
+    return {
+        "all_cat": {k: summarize_spec(v) for k, v in catalog_dict.get("all_cat", {}).items()},
+        "categories": {
+            cat_name: {
+                "description": cat_info.get("description", ""),
+                "values": {k: summarize_spec(v) for k, v in cat_info.get("values", {}).items()}
+            }
+            for cat_name, cat_info in catalog_dict.get("categories", {}).items()
+        }
+    }
+
+def get_catalog(*args, **kwargs) -> dict:
+    """Retourne le catalogue complet 100% sérialisable en JSON pour GET /api/catalog."""
+    return {
+        "action_specs": {
+            "ffmpeg": _summarize_catalog_dict(FFMPEG_CATALOG),
+            "magick": _summarize_catalog_dict(MAGICK_CATALOG),
+            "sox": _summarize_catalog_dict(SOX_CATALOG),
+            "all_cat": {k: summarize_spec(v) for k, v in ACTION_ALL_CAT.items()}
+        },
+        "pipeline_specs": _summarize_catalog_dict(PIPELINE_CATALOG)
+    }
+
+def get_spec(spec_id: str):
+    """Retourne l'objet Spec complet avec ses fonctions pour le CommandEngine."""
+    return ALL_CAT.get(spec_id, None)
+
+BINARY_CONFS = {
+    "ffmpeg": FFMPEG_CONFIG,
+    "sox": SOX_CONFIG,
+    "magick": MAGICK_CONFIG
+}
+
+def get_binary_config(tool_name: str):
+    return BINARY_CONFS[tool_name]============================
+================./specs/pipelines/base_model.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Sep  5 11:31:51 2026
+
+@author: hounsousamuel
+"""
+
+"""
+Workbench Mediakit — Modèles Pydantic pour les entrées globales de tous les Pipelines.
+
+Chaque modèle représente le formulaire que l'utilisateur remplit dans l'interface
+graphique pour lancer un workflow complet à plusieurs étapes. Les fichiers d'entrée
+sont strictement annotés avec UploadRef pour assurer leur transfert automatique.
+"""
+
+from typing import Literal
+from pydantic import BaseModel, Field
+from workbench.specs.uploads import UploadRef
+
+
+# =============================================================================
+# A. PIPELINES 100% VIDÉO (FFMPEG)
+# =============================================================================
+
+class SocialRepurposerInput(BaseModel):
+    input_file: str = UploadRef(description="Vidéo source paysage (16:9)")
+    watermark_logo: str = UploadRef(description="Logo PNG transparent")
+    start_seconds: float = Field(default=0.0, ge=0.0, description="Point de départ de l'extrait")
+    duration_seconds: float = Field(default=30.0, ge=3.0, le=90.0, description="Durée du Short / Reel")
+    vertical_mode: Literal["blur_background", "crop_center"] = "blur_background"
+    logo_position: Literal["top_left", "top_right", "bottom_left", "bottom_right"] = "top_right"
+
+
+class WebOptimizerInput(BaseModel):
+    input_file: str = UploadRef(description="Vidéo haute résolution à optimiser pour le web")
+    resolution: Literal["1280x720", "854x480", "640x360"] = "1280x720"
+    crf_quality: int = Field(default=28, ge=20, le=35, description="Qualité CRF (28 = excellent ratio poids/qualité)")
+
+
+class ProGifMakerInput(BaseModel):
+    input_file: str = UploadRef(description="Vidéo source")
+    start_seconds: float = Field(default=0.0, ge=0.0)
+    duration_seconds: float = Field(default=4.0, ge=0.5, le=15.0)
+    fps: int = Field(default=15, ge=5, le=25)
+    width: int = Field(default=480, ge=200, le=800)
+
+
+class HardsubSocialInput(BaseModel):
+    input_file: str = UploadRef(description="Vidéo source")
+    subtitles_file: str = UploadRef(description="Fichier de sous-titres (.srt)")
+    vertical_mode: Literal["blur_background", "crop_center"] = "crop_center"
+
+
+class SpeedupMuteInput(BaseModel):
+    input_file: str = UploadRef(description="Vidéo source")
+    speed_factor: Literal["1.25", "1.5", "2.0"] = "2.0"
+
+
+# =============================================================================
+# B. PIPELINES 100% IMAGE (IMAGEMAGICK)
+# =============================================================================
+
+class EcommerceProductInput(BaseModel):
+    input_file: str = UploadRef(description="Photo brute de produit")
+    dimension: Literal["512", "800", "1024"] = "800"
+    quality: int = Field(default=82, ge=50, le=95, description="Qualité de compression WebP")
+
+
+class VintageCardInput(BaseModel):
+    input_file: str = UploadRef(description="Photo source")
+    sepia_intensity: int = Field(default=80, ge=40, le=95)
+    border_color: Literal["black", "white", "gold", "gray"] = "white"
+    border_thickness: int = Field(default=20, ge=5, le=80)
+
+
+class FaviconGeneratorInput(BaseModel):
+    input_file: str = UploadRef(description="Logo ou icône carrée haute résolution (PNG)")
+
+
+class PrivacyBlurInput(BaseModel):
+    input_file: str = UploadRef(description="Photo avec visages ou données privées")
+    blur_intensity: int = Field(default=12, ge=4, le=40)
+
+
+# =============================================================================
+# C. PIPELINES 100% AUDIO (SOX)
+# =============================================================================
+
+class PodcastMasteringInput(BaseModel):
+    input_file: str = UploadRef(description="Enregistrement vocal brut d'interview / podcast")
+    highpass_cutoff_hz: int = Field(default=80, ge=40, le=160, description="Fréquence de coupure anti-rumble")
+    target_peak_db: float = Field(default=-1.0, ge=-6.0, le=0.0, description="Plafond de crête (dB)")
+    output_format: Literal["mp3", "wav", "flac"] = "mp3"
+
+
+class SpeechToTextPrepInput(BaseModel):
+    input_file: str = UploadRef(description="Fichier audio à transcrire avec Whisper / IA")
+
+
+class DjStingerInput(BaseModel):
+    input_file: str = UploadRef(description="Jingle ou piste musicale")
+    start_seconds: float = Field(default=0.0, ge=0.0)
+    duration_seconds: float = Field(default=15.0, ge=2.0, le=60.0)
+    tempo_factor: float = Field(default=1.15, ge=0.8, le=2.0)
+    fade_out_seconds: float = Field(default=3.0, ge=0.5, le=10.0)
+
+
+class LofiRetroInput(BaseModel):
+    input_file: str = UploadRef(description="Musique moderne à transformer en Lo-Fi")
+    overdrive_gain_db: int = Field(default=12, ge=2, le=30)
+
+
+# =============================================================================
+# D. SUPER-PIPELINES CROISÉS (SOX + MAGICK + FFMPEG)
+# =============================================================================
+
+class YoutubePodcastCardInput(BaseModel):
+    audio_file: str = UploadRef(description="Piste audio du podcast")
+    cover_image: str = UploadRef(description="Illustration de couverture carrée ou libre")
+    background_color: Literal["black", "white", "gray"] = "black"
+
+
+class VideoAudioRemasterInput(BaseModel):
+    video_file: str = UploadRef(description="Vidéo dont la bande-son doit être remasterisée")
+    normalize_peak_db: float = Field(default=-1.0, ge=-6.0, le=0.0)
+    bass_boost_db: float = Field(default=2.5, ge=-10.0, le=10.0)
+
+
+class VideoTeaserCardInput(BaseModel):
+    video_file: str = UploadRef(description="Vidéo source")
+    snapshot_timestamp_s: float = Field(default=10.0, ge=0.0)
+    teaser_text: str = Field(default="NOUVEL ÉPISODE", max_length=40)
+    text_color: Literal["white", "gold", "yellow", "red"] = "gold"
+
+
+class VideoToOptimizedWebpInput(BaseModel):
+    video_file: str = UploadRef(description="Extrait vidéo source")
+    start_seconds: float = Field(default=0.0, ge=0.0)
+    duration_seconds: float = Field(default=4.0, ge=1.0, le=15.0)
+    width: int = Field(default=480, ge=240, le=720)============================
+================./specs/pipelines/__init__.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Sep  5 11:34:36 2026
+
+@author: hounsousamuel
+"""
+
+"""
+Workbench Mediakit — Spécifications et catalogue complet de tous les Pipelines.
+"""
+
+from workbench.products.mediakit.specs.pipelines.pipelines_video import PIPELINES_VIDEO_ACTIONS
+from workbench.products.mediakit.specs.pipelines.pipelines_image import PIPELINES_IMAGE_ACTIONS
+from workbench.products.mediakit.specs.pipelines.pipelines_audio import PIPELINES_AUDIO_ACTIONS
+from workbench.products.mediakit.specs.pipelines.pipelines_combo import PIPELINES_COMBO_ACTIONS
+from workbench.wb_utils.merger import merge
+
+# ─── DICT 1 : MERGE TOTAL À PLAT (Recherche rapide par pipeline_id) ────
+PIPELINE_ACTIONS = merge(
+    PIPELINES_VIDEO_ACTIONS,
+    PIPELINES_IMAGE_ACTIONS,
+    PIPELINES_AUDIO_ACTIONS,
+    PIPELINES_COMBO_ACTIONS,
+)
+
+
+# ─── DICT 2 : CATALOGUE GRANULAIRE STRUCTURÉ (Pour les onglets et l'UI) ─────
+PIPELINE_CATALOG = {
+    "all_cat": PIPELINE_ACTIONS,
+    "categories": {
+        "video": {
+            "description": (
+                "Workflows vidéo complets 100% FFmpeg : adaptation automatique pour TikTok/Shorts (9:16 vertical "
+                "avec flou d'arrière-plan et logo), optimisation de poids pour streaming web (720p + CRF + Faststart), "
+                "création de GIF haute fidélité avec palette 256 couleurs, et vidéos sous-titrées en dur (hardsub)."
+            ),
+            "values": PIPELINES_VIDEO_ACTIONS,
+        },
+        "image": {
+            "description": (
+                "Workflows image complets 100% ImageMagick : packaging e-commerce (redressement EXIF, miniature carrée, "
+                "suppression des métadonnées GPS et compression WebP), composition de cartes postales rétro (sépia + "
+                "vignettage + cadre), génération de suites d'icônes Favicon ICO, et floutage d'anonymisation."
+            ),
+            "values": PIPELINES_IMAGE_ACTIONS,
+        },
+        "audio": {
+            "description": (
+                "Workflows audio complets 100% SoX : mastering studio pour podcasts et interviews (coupe des silences, "
+                "filtre anti-rumble, compresseur multi-bandes et normalisation de crête), préparation optimale pour "
+                "l'IA de transcription Whisper (mono 16 kHz), jingles radio et colorisation Lo-Fi rétro."
+            ),
+            "values": PIPELINES_AUDIO_ACTIONS,
+        },
+        "combo": {
+            "description": (
+                "Super-Pipelines croisés multi-outils (SoX + ImageMagick + FFmpeg) : génération de vidéos YouTube "
+                "à partir d'un podcast et d'une pochette d'album, remasterisation de bande-son vidéo sans altération "
+                "visuelle, création d'affiches teaser promotionnelles et animations WebP ultra-légères."
+            ),
+            "values": PIPELINES_COMBO_ACTIONS,
+        },
+    },
+}
+
+
+__all__ = [
+    "PIPELINE_ACTIONS",
+    "PIPELINE_CATALOG",
+]============================
+================./specs/pipelines/pipelines_combo.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Sep  5 11:34:58 2026
+
+@author: hounsousamuel
+"""
+
+"""
+Workbench Mediakit — Super-Pipelines Croisés Multi-Outils (SoX + ImageMagick + FFmpeg).
+
+Ce fichier met en valeur toute la puissance architecturale du moteur Workbench :
+faire coopérer des binaires hétérogènes sans jamais utiliser de pipe Unix (|) :
+- SoX masterise le son, ImageMagick formate l'image 1080p, FFmpeg produit la vidéo YouTube.
+- FFmpeg extrait l'audio, SoX le filtre avec précision studio, FFmpeg réinjecte la bande-son.
+- FFmpeg capture une frame, ImageMagick la légende avec texte et cadre promotionnel.
+- FFmpeg découpe et anime, ImageMagick optimise la compression WebP.
+"""
+
+from workbench.specs.registry import collect_specs
+from workbench.specs.pipeline_spec import PipelineSpec, PipelineStepSpec
+from workbench.products.mediakit.specs.pipelines.base_model import (
+    YoutubePodcastCardInput, VideoAudioRemasterInput,
+    VideoTeaserCardInput, VideoToOptimizedWebpInput
+)
+from workbench.products.mediakit.specs.sox.actions.actions_dynamics import normalize_gain_spec, compand_dynamics_spec
+from workbench.products.mediakit.specs.sox.actions.actions_eq import bass_treble_spec
+from workbench.products.mediakit.specs.sox.base_model import NormalizeGainInput, CompandDynamicsInput, BassTrebleInput
+from workbench.products.mediakit.specs.magick.actions.actions_geometry import canvas_extent_spec
+from workbench.products.mediakit.specs.magick.actions.actions_overlays import watermark_text_spec, add_border_spec
+from workbench.products.mediakit.specs.magick.actions.actions_convert import compress_quality_spec
+from workbench.products.mediakit.specs.magick.base_model import CanvasExtentInput, WatermarkTextInput, AddBorderInput, CompressQualityInput
+from workbench.products.mediakit.specs.ffmpeg.actions.actions_multi import image_plus_audio_spec
+from workbench.products.mediakit.specs.ffmpeg.actions.actions_extract import extract_audio_convert_spec, extract_frame_single_spec
+from workbench.products.mediakit.specs.ffmpeg.actions.actions_audio import replace_audio_spec
+from workbench.products.mediakit.specs.ffmpeg.actions.actions_convert import video_to_gif_spec
+from workbench.products.mediakit.specs.ffmpeg.actions.actions_timing import trim_no_copy_spec
+from workbench.products.mediakit.specs.ffmpeg.base_model import (
+    ImagePlusAudioInput, ExtractAudioConvertInput, ReplaceAudioInput,
+    ExtractFrameInput, TrimVideoInput, VideoToGifInput
+)
+
+
+# ─── 1. GÉNÉRATEUR VIDÉO PODCAST YOUTUBE (SOX + MAGICK -> FFMPEG) ────────────
+pipeline_youtube_podcast_card = PipelineSpec[YoutubePodcastCardInput](
+    id="pipeline_youtube_podcast_card",
+    label="Générateur Podcast YouTube (Normalisation SoX + Pochette Magick 1080p + Vidéo FFmpeg)",
+    input_cls=YoutubePodcastCardInput,
+    steps=[
+        PipelineStepSpec[YoutubePodcastCardInput](
+            id="step_sox_norm",
+            action=normalize_gain_spec,
+            build_step_input=lambda p, o: NormalizeGainInput(
+                input_file=p.audio_file,
+                target_db=-1.0,
+                output_format="wav"
+            )
+        ),
+        PipelineStepSpec[YoutubePodcastCardInput](
+            id="step_magick_cover",
+            action=canvas_extent_spec,
+            build_step_input=lambda p, o: CanvasExtentInput(
+                input_file=p.cover_image,
+                target_dimension="1920x1080",
+                background_color=p.background_color,
+                output_format="jpg"
+            )
+        ),
+        PipelineStepSpec[YoutubePodcastCardInput](
+            id="step_ffmpeg_mux",
+            action=image_plus_audio_spec,
+            build_step_input=lambda p, o: ImagePlusAudioInput(
+                image_file=o["step_magick_cover"],
+                audio_file=o["step_sox_norm"]
+            )
+        )
+    ]
+)
+
+
+# ─── 2. REMASTER AUDIO VIDÉO (FFMPEG -> SOX -> FFMPEG) ───────────────────────
+pipeline_video_audio_remaster = PipelineSpec[VideoAudioRemasterInput](
+    id="pipeline_video_audio_remaster",
+    label="Remasterisation Sonore Vidéo (Extraction WAV -> Traitement Studio SoX -> Réinjection FFmpeg)",
+    input_cls=VideoAudioRemasterInput,
+    steps=[
+        PipelineStepSpec[VideoAudioRemasterInput](
+            id="step_extract_wav",
+            action=extract_audio_convert_spec,
+            build_step_input=lambda p, o: ExtractAudioConvertInput(
+                input_file=p.video_file,
+                output_format="wav",
+                bitrate="192k"
+            )
+        ),
+        PipelineStepSpec[VideoAudioRemasterInput](
+            id="step_sox_master",
+            action=compand_dynamics_spec,
+            build_step_input=lambda p, o: CompandDynamicsInput(
+                input_file=o["_previous"],
+                profile="podcast_voice",
+                output_format="wav"
+            )
+        ),
+        PipelineStepSpec[VideoAudioRemasterInput](
+            id="step_sox_eq",
+            action=bass_treble_spec,
+            build_step_input=lambda p, o: BassTrebleInput(
+                input_file=o["_previous"],
+                bass_db=p.bass_boost_db,
+                treble_db=1.5,
+                output_format="wav"
+            )
+        ),
+        PipelineStepSpec[VideoAudioRemasterInput](
+            id="step_reinject_audio",
+            action=replace_audio_spec,
+            build_step_input=lambda p, o: ReplaceAudioInput(
+                input_file=p.video_file,
+                new_audio_file=o["_previous"]
+            )
+        )
+    ]
+)
+
+
+# ─── 3. CARTE PROMOTIONNELLE TEASER (FFMPEG -> MAGICK) ───────────────────────
+pipeline_video_teaser_card = PipelineSpec[VideoTeaserCardInput](
+    id="pipeline_video_teaser_card",
+    label="Affiche Teaser Réseaux Sociaux (Capture Frame FFmpeg + Titrage et Bordure Magick)",
+    input_cls=VideoTeaserCardInput,
+    steps=[
+        PipelineStepSpec[VideoTeaserCardInput](
+            id="step_snapshot",
+            action=extract_frame_single_spec,
+            build_step_input=lambda p, o: ExtractFrameInput(
+                input_file=p.video_file,
+                timestamp_seconds=p.snapshot_timestamp_s,
+                output_format="jpg"
+            )
+        ),
+        PipelineStepSpec[VideoTeaserCardInput](
+            id="step_text_badge",
+            action=watermark_text_spec,
+            build_step_input=lambda p, o: WatermarkTextInput(
+                input_file=o["_previous"],
+                text=p.teaser_text,
+                position="south",
+                pointsize=36,
+                color=p.text_color,
+                output_format="jpg"
+            )
+        ),
+        PipelineStepSpec[VideoTeaserCardInput](
+            id="step_frame_border",
+            action=add_border_spec,
+            build_step_input=lambda p, o: AddBorderInput(
+                input_file=o["_previous"],
+                thickness=18,
+                color="black",
+                output_format="jpg"
+            )
+        )
+    ]
+)
+
+
+# ─── 4. ANIMATION WEBP ULTRA-LÉGÈRE (FFMPEG -> MAGICK) ───────────────────────
+pipeline_video_to_optimized_webp = PipelineSpec[VideoToOptimizedWebpInput](
+    id="pipeline_video_to_optimized_webp",
+    label="Animation WebP Optimisée (Découpe & Animation FFmpeg + Compression Magick)",
+    input_cls=VideoToOptimizedWebpInput,
+    steps=[
+        PipelineStepSpec[VideoToOptimizedWebpInput](
+            id="step_trim",
+            action=trim_no_copy_spec,
+            build_step_input=lambda p, o: TrimVideoInput(
+                input_file=p.video_file,
+                start_seconds=p.start_seconds,
+                duration_seconds=p.duration_seconds
+            )
+        ),
+        PipelineStepSpec[VideoToOptimizedWebpInput](
+            id="step_gif_anim",
+            action=video_to_gif_spec,
+            build_step_input=lambda p, o: VideoToGifInput(
+                input_file=o["_previous"],
+                fps=15,
+                width=p.width,
+                duration_s=p.duration_seconds
+            )
+        ),
+        PipelineStepSpec[VideoToOptimizedWebpInput](
+            id="step_webp_compress",
+            action=compress_quality_spec,
+            build_step_input=lambda p, o: CompressQualityInput(
+                input_file=o["_previous"],
+                quality=78,
+                output_format="webp"
+            )
+        )
+    ]
+)
+
+
+# =============================================================================
+# COLLECTE AUTOMATIQUE DU MODULE
+# =============================================================================
+PIPELINES_COMBO_ACTIONS = collect_specs(__name__, spec_type=PipelineSpec)
+__all__ = ["PIPELINES_COMBO_ACTIONS"]============================
+================./specs/pipelines/pipelines_audio.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Sep  5 11:35:16 2026
+
+@author: hounsousamuel
+"""
+
+"""
+Workbench Mediakit — Actions Pipelines SoX : Workflows Audio Dédiés.
+
+Ce fichier orchestre des enchaînements DSP de studio 100% audio :
+le mastering vocal complet pour podcasts et interviews (anti-rumble, compand, norm),
+le conditionnement optimal de fichiers vocaux pour les IA de transcription (Whisper),
+la fabrication de jingles de transition radio (tempo, reverb, fade out),
+et la transformation vintage Lo-Fi (égalisation réductrice et saturation analogique).
+"""
+
+from workbench.specs.registry import collect_specs
+from workbench.specs.pipeline_spec import PipelineSpec, PipelineStepSpec
+from workbench.products.mediakit.specs.pipelines.base_model import (
+    PodcastMasteringInput, SpeechToTextPrepInput, DjStingerInput, LofiRetroInput
+)
+from workbench.products.mediakit.specs.sox.actions.actions_dynamics import (
+    strip_silence_spec, compand_dynamics_spec, normalize_gain_spec
+)
+from workbench.products.mediakit.specs.sox.actions.actions_eq import (
+    highpass_spec, lowpass_spec, bass_treble_spec
+)
+from workbench.products.mediakit.specs.sox.actions.actions_convert import (
+    channels_remix_spec, resample_audio_spec, convert_audio_spec
+)
+from workbench.products.mediakit.specs.sox.actions.actions_timing import (
+    trim_audio_spec, change_tempo_spec, fade_audio_spec
+)
+from workbench.products.mediakit.specs.sox.actions.actions_effects import (
+    reverb_audio_spec, overdrive_audio_spec
+)
+from workbench.products.mediakit.specs.sox.base_model import (
+    StripSilenceInput, HighPassFilterInput, CompandDynamicsInput, NormalizeGainInput,
+    ChannelsRemixInput, ResampleAudioInput, TrimAudioInput, ChangeTempoInput,
+    FadeAudioInput, ReverbAudioInput, LowPassFilterInput, BassTrebleInput,
+    OverdriveAudioInput, ConvertAudioInput
+)
+
+
+# ─── 1. MASTERING VOCAL PODCAST (SILENCE -> HIGHPASS -> COMPAND -> NORM) ─────
+pipeline_podcast_mastering = PipelineSpec[PodcastMasteringInput](
+    id="pipeline_podcast_mastering",
+    label="Mastering Vocal Studio (Coupe-silence + Anti-rumble + Compresseur + Normalisation)",
+    input_cls=PodcastMasteringInput,
+    steps=[
+        PipelineStepSpec[PodcastMasteringInput](
+            id="step_strip_silence",
+            action=strip_silence_spec,
+            build_step_input=lambda p, o: StripSilenceInput(
+                input_file=p.input_file,
+                threshold_percent=1.0,
+                min_silence_duration=0.4,
+                output_format="wav"
+            )
+        ),
+        PipelineStepSpec[PodcastMasteringInput](
+            id="step_highpass",
+            action=highpass_spec,
+            build_step_input=lambda p, o: HighPassFilterInput(
+                input_file=o["_previous"],
+                cutoff_hz=p.highpass_cutoff_hz,
+                output_format="wav"
+            )
+        ),
+        PipelineStepSpec[PodcastMasteringInput](
+            id="step_compand",
+            action=compand_dynamics_spec,
+            build_step_input=lambda p, o: CompandDynamicsInput(
+                input_file=o["_previous"],
+                profile="podcast_voice",
+                output_format="wav"
+            )
+        ),
+        PipelineStepSpec[PodcastMasteringInput](
+            id="step_normalize",
+            action=normalize_gain_spec,
+            build_step_input=lambda p, o: NormalizeGainInput(
+                input_file=o["_previous"],
+                target_db=p.target_peak_db,
+                output_format=p.output_format
+            )
+        )
+    ]
+)
+
+
+# ─── 2. PRÉPARATION IA SPEECH-TO-TEXT / WHISPER (MONO -> 16kHz -> NORM) ──────
+pipeline_speech_to_text_prep = PipelineSpec[SpeechToTextPrepInput](
+    id="pipeline_speech_to_text_prep",
+    label="Conditionnement Audio pour IA Whisper (Mono + Rééchantillonnage 16 kHz + Normalisation)",
+    input_cls=SpeechToTextPrepInput,
+    steps=[
+        PipelineStepSpec[SpeechToTextPrepInput](
+            id="step_mono",
+            action=channels_remix_spec,
+            build_step_input=lambda p, o: ChannelsRemixInput(
+                input_file=p.input_file,
+                channels="1",
+                output_format="wav"
+            )
+        ),
+        PipelineStepSpec[SpeechToTextPrepInput](
+            id="step_16k",
+            action=resample_audio_spec,
+            build_step_input=lambda p, o: ResampleAudioInput(
+                input_file=o["_previous"],
+                sample_rate="16000",
+                output_format="wav"
+            )
+        ),
+        PipelineStepSpec[SpeechToTextPrepInput](
+            id="step_norm",
+            action=normalize_gain_spec,
+            build_step_input=lambda p, o: NormalizeGainInput(
+                input_file=o["_previous"],
+                target_db=-1.0,
+                output_format="wav"
+            )
+        )
+    ]
+)
+
+
+# ─── 3. JINGLE RADIO / DJ STINGER (TRIM -> TEMPO -> REVERB -> FADE) ──────────
+pipeline_dj_stinger = PipelineSpec[DjStingerInput](
+    id="pipeline_dj_stinger",
+    label="Jingle Radio Transition (Extrait court + Accélération + Réverbération + Fondu)",
+    input_cls=DjStingerInput,
+    steps=[
+        PipelineStepSpec[DjStingerInput](
+            id="step_trim",
+            action=trim_audio_spec,
+            build_step_input=lambda p, o: TrimAudioInput(
+                input_file=p.input_file,
+                start_seconds=p.start_seconds,
+                duration_seconds=p.duration_seconds,
+                output_format="wav"
+            )
+        ),
+        PipelineStepSpec[DjStingerInput](
+            id="step_tempo",
+            action=change_tempo_spec,
+            build_step_input=lambda p, o: ChangeTempoInput(
+                input_file=o["_previous"],
+                factor=p.tempo_factor,
+                output_format="wav"
+            )
+        ),
+        PipelineStepSpec[DjStingerInput](
+            id="step_reverb",
+            action=reverb_audio_spec,
+            build_step_input=lambda p, o: ReverbAudioInput(
+                input_file=o["_previous"],
+                reverberance=45,
+                damping=40,
+                output_format="wav"
+            )
+        ),
+        PipelineStepSpec[DjStingerInput](
+            id="step_fade",
+            action=fade_audio_spec,
+            build_step_input=lambda p, o: FadeAudioInput(
+                input_file=o["_previous"],
+                curve="t",
+                fade_in_s=0.2,
+                fade_out_s=p.fade_out_seconds,
+                output_format="mp3"
+            )
+        )
+    ]
+)
+
+
+# ─── 4. TRANSFORMATION VINTAGE LO-FI (LOWPASS -> BASS BOOST -> OVERDRIVE) ────
+pipeline_lofi_retro = PipelineSpec[LofiRetroInput](
+    id="pipeline_lofi_retro",
+    label="Effet Audio Lo-Fi Rétro (Filtrage étouffé + Boost des basses + Saturation analogique)",
+    input_cls=LofiRetroInput,
+    steps=[
+        PipelineStepSpec[LofiRetroInput](
+            id="step_lowpass",
+            action=lowpass_spec,
+            build_step_input=lambda p, o: LowPassFilterInput(
+                input_file=p.input_file,
+                cutoff_hz=3200,
+                output_format="wav"
+            )
+        ),
+        PipelineStepSpec[LofiRetroInput](
+            id="step_bass",
+            action=bass_treble_spec,
+            build_step_input=lambda p, o: BassTrebleInput(
+                input_file=o["_previous"],
+                bass_db=4.5,
+                treble_db=-6.0,
+                output_format="wav"
+            )
+        ),
+        PipelineStepSpec[LofiRetroInput](
+            id="step_overdrive",
+            action=overdrive_audio_spec,
+            build_step_input=lambda p, o: OverdriveAudioInput(
+                input_file=o["_previous"],
+                gain_db=p.overdrive_gain_db,
+                colour=30,
+                output_format="mp3"
+            )
+        )
+    ]
+)
+
+
+# =============================================================================
+# COLLECTE AUTOMATIQUE DU MODULE
+# =============================================================================
+PIPELINES_AUDIO_ACTIONS = collect_specs(__name__, spec_type=PipelineSpec)
+__all__ = ["PIPELINES_AUDIO_ACTIONS"]============================
+================./specs/pipelines/pipelines_image.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Sep  5 11:35:33 2026
+
+@author: hounsousamuel
+"""
+
+"""
+Workbench Mediakit — Actions Pipelines ImageMagick : Workflows Image Dédiés.
+
+Ce fichier orchestre des enchaînements multi-étapes 100% image :
+le packaging de photos de produits pour sites e-commerce (auto-orient, avatar carré,
+nettoyage EXIF et compression WebP), la création de cartes postales rétro (sépia,
+vignettage et cadre), la suite de favicons et l'anonymisation sécurisée.
+"""
+
+from workbench.specs.registry import collect_specs
+from workbench.specs.pipeline_spec import PipelineSpec, PipelineStepSpec
+from workbench.products.mediakit.specs.pipelines.base_model import (
+    EcommerceProductInput, VintageCardInput, FaviconGeneratorInput, PrivacyBlurInput
+)
+from workbench.products.mediakit.specs.magick.actions.actions_geometry import (
+    auto_orient_spec, square_thumbnail_spec
+)
+from workbench.products.mediakit.specs.magick.actions.actions_convert import (
+    strip_metadata_spec, compress_quality_spec, generate_favicon_spec
+)
+from workbench.products.mediakit.specs.magick.actions.actions_color import (
+    sepia_spec
+)
+from workbench.products.mediakit.specs.magick.actions.actions_effects import (
+    vignette_spec, blur_spec
+)
+from workbench.products.mediakit.specs.magick.actions.actions_overlays import (
+    add_border_spec
+)
+from workbench.products.mediakit.specs.magick.base_model import (
+    AutoOrientInput, SquareThumbnailInput, StripMetadataInput, CompressQualityInput,
+    SepiaToneInput, VignetteInput, AddBorderInput, GenerateFaviconInput, BlurImageInput
+)
+
+
+# ─── 1. PACKAGING PRODUIT E-COMMERCE (ORIENT -> SQUARE -> STRIP -> WEBP) ─────
+pipeline_ecommerce_product = PipelineSpec[EcommerceProductInput](
+    id="pipeline_ecommerce_product",
+    label="Packaging Photo E-Commerce (Redressement + Format carré + Strip EXIF + WebP)",
+    input_cls=EcommerceProductInput,
+    steps=[
+        PipelineStepSpec[EcommerceProductInput](
+            id="step_orient",
+            action=auto_orient_spec,
+            build_step_input=lambda p, o: AutoOrientInput(
+                input_file=p.input_file,
+                output_format="jpg"
+            )
+        ),
+        PipelineStepSpec[EcommerceProductInput](
+            id="step_square",
+            action=square_thumbnail_spec,
+            build_step_input=lambda p, o: SquareThumbnailInput(
+                input_file=o["_previous"],
+                dimension=p.dimension,
+                output_format="jpg"
+            )
+        ),
+        PipelineStepSpec[EcommerceProductInput](
+            id="step_strip",
+            action=strip_metadata_spec,
+            build_step_input=lambda p, o: StripMetadataInput(
+                input_file=o["_previous"],
+                output_format="jpg"
+            )
+        ),
+        PipelineStepSpec[EcommerceProductInput](
+            id="step_compress_webp",
+            action=compress_quality_spec,
+            build_step_input=lambda p, o: CompressQualityInput(
+                input_file=o["_previous"],
+                quality=p.quality,
+                output_format="webp"
+            )
+        )
+    ]
+)
+
+
+# ─── 2. CARTE POSTALE VINTAGE (SÉPIA -> VIGNETTAGE -> CADRE) ─────────────────
+pipeline_vintage_card = PipelineSpec[VintageCardInput](
+    id="pipeline_vintage_card",
+    label="Carte Postale Rétro (Virage Sépia + Vignettage sombre + Cadre photo)",
+    input_cls=VintageCardInput,
+    steps=[
+        PipelineStepSpec[VintageCardInput](
+            id="step_sepia",
+            action=sepia_spec,
+            build_step_input=lambda p, o: SepiaToneInput(
+                input_file=p.input_file,
+                threshold_percent=p.sepia_intensity,
+                output_format="jpg"
+            )
+        ),
+        PipelineStepSpec[VintageCardInput](
+            id="step_vignette",
+            action=vignette_spec,
+            build_step_input=lambda p, o: VignetteInput(
+                input_file=o["_previous"],
+                radius=0,
+                sigma=25,
+                output_format="jpg"
+            )
+        ),
+        PipelineStepSpec[VintageCardInput](
+            id="step_border",
+            action=add_border_spec,
+            build_step_input=lambda p, o: AddBorderInput(
+                input_file=o["_previous"],
+                thickness=p.border_thickness,
+                color=p.border_color,
+                output_format="jpg"
+            )
+        )
+    ]
+)
+
+
+# ─── 3. SUITE FAVICON DU WEB (SQUARE -> ICO) ─────────────────────────────────
+pipeline_favicon_generator = PipelineSpec[FaviconGeneratorInput](
+    id="pipeline_favicon_generator",
+    label="Générateur de Favicon (Recadrage carré 512px + Conteneur ICO multi-tailles)",
+    input_cls=FaviconGeneratorInput,
+    steps=[
+        PipelineStepSpec[FaviconGeneratorInput](
+            id="step_square",
+            action=square_thumbnail_spec,
+            build_step_input=lambda p, o: SquareThumbnailInput(
+                input_file=p.input_file,
+                dimension="512",
+                output_format="png"
+            )
+        ),
+        PipelineStepSpec[FaviconGeneratorInput](
+            id="step_ico",
+            action=generate_favicon_spec,
+            build_step_input=lambda p, o: GenerateFaviconInput(
+                input_file=o["_previous"]
+            )
+        )
+    ]
+)
+
+
+# ─── 4. ANONYMISATION DE CONFIDENTIALITÉ (FLOU + STRIP EXIF) ─────────────────
+pipeline_privacy_blur = PipelineSpec[PrivacyBlurInput](
+    id="pipeline_privacy_blur",
+    label="Anonymisation Complète (Flou gaussien + Suppression métadonnées GPS/EXIF)",
+    input_cls=PrivacyBlurInput,
+    steps=[
+        PipelineStepSpec[PrivacyBlurInput](
+            id="step_blur",
+            action=blur_spec,
+            build_step_input=lambda p, o: BlurImageInput(
+                input_file=p.input_file,
+                radius=0,
+                sigma=p.blur_intensity,
+                output_format="jpg"
+            )
+        ),
+        PipelineStepSpec[PrivacyBlurInput](
+            id="step_strip",
+            action=strip_metadata_spec,
+            build_step_input=lambda p, o: StripMetadataInput(
+                input_file=o["_previous"],
+                output_format="jpg"
+            )
+        )
+    ]
+)
+
+
+# =============================================================================
+# COLLECTE AUTOMATIQUE DU MODULE
+# =============================================================================
+PIPELINES_IMAGE_ACTIONS = collect_specs(__name__, spec_type=PipelineSpec)
+__all__ = ["PIPELINES_IMAGE_ACTIONS"]============================
+================./specs/pipelines/pipelines_video.py============
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Sep  5 11:35:50 2026
+
+@author: hounsousamuel
+"""
+
+"""
+Workbench Mediakit — Actions Pipelines FFmpeg : Workflows Vidéo Dédiés.
+
+Ce fichier orchestre des enchaînements multi-étapes 100% vidéo :
+le recyclage automatique de rushs 16:9 en Shorts/TikTok/Reels 9:16 avec logo,
+l'optimisation chirurgicale de vidéos pour le web (720p + compression CRF + faststart),
+la fabrication de GIF animés haute fidélité, l'incrustation de sous-titres suivie
+de l'adaptation verticale, et l'accélération timelapse muette.
+"""
+
+from workbench.specs.registry import collect_specs
+from workbench.specs.pipeline_spec import PipelineSpec, PipelineStepSpec
+from workbench.products.mediakit.specs.pipelines.base_model import (
+    SocialRepurposerInput, WebOptimizerInput, ProGifMakerInput,
+    HardsubSocialInput, SpeedupMuteInput
+)
+from workbench.products.mediakit.specs.ffmpeg.actions.actions_timing import (
+    trim_no_copy_spec, trim_with_copy_spec, speed_video_spec
+)
+from workbench.products.mediakit.specs.ffmpeg.actions.actions_geometry import (
+    social_vertical_spec, resize_video_spec
+)
+from workbench.products.mediakit.specs.ffmpeg.actions.actions_effects import (
+    watermark_spec, burn_subtitles_spec
+)
+from workbench.products.mediakit.specs.ffmpeg.actions.actions_convert import (
+    compress_crf_spec, faststart_web_spec, video_to_gif_spec
+)
+from workbench.products.mediakit.specs.ffmpeg.actions.actions_audio import (
+    mute_video_spec
+)
+from workbench.products.mediakit.specs.ffmpeg.base_model import (
+    TrimVideoInput, SocialVerticalInput, AddWatermarkInput,
+    ResizeVideoInput, CompressCrfInput, FaststartWebInput,
+    VideoToGifInput, BurnSubtitlesInput, SpeedVideoInput, MuteVideoInput
+)
+
+
+# ─── 1. RECYCLEUR VIDÉO SOCIAL (TRIM -> VERTICAL 9:16 -> LOGO) ───────────────
+pipeline_social_repurposer = PipelineSpec[SocialRepurposerInput](
+    id="pipeline_social_repurposer",
+    label="Recycleur Réseaux Sociaux (Découpe + Format vertical 9:16 + Watermark)",
+    input_cls=SocialRepurposerInput,
+    steps=[
+        PipelineStepSpec[SocialRepurposerInput](
+            id="step_trim",
+            action=trim_no_copy_spec,
+            build_step_input=lambda p, o: TrimVideoInput(
+                input_file=p.input_file,
+                start_seconds=p.start_seconds,
+                duration_seconds=p.duration_seconds
+            )
+        ),
+        PipelineStepSpec[SocialRepurposerInput](
+            id="step_vertical",
+            action=social_vertical_spec,
+            build_step_input=lambda p, o: SocialVerticalInput(
+                input_file=o["_previous"],
+                mode=p.vertical_mode
+            )
+        ),
+        PipelineStepSpec[SocialRepurposerInput](
+            id="step_watermark",
+            action=watermark_spec,
+            build_step_input=lambda p, o: AddWatermarkInput(
+                input_file=o["_previous"],
+                watermark_image=p.watermark_logo,
+                position=p.logo_position,
+                margin_px=20
+            )
+        )
+    ]
+)
+
+
+# ─── 2. COMPRESSEUR WEB HAUTE PERFORMANCE (RESIZE -> COMPRESS -> FASTSTART) ──
+pipeline_web_optimizer = PipelineSpec[WebOptimizerInput](
+    id="pipeline_web_optimizer",
+    label="Optimiseur Web Vidéo (Descente 720p + Compression CRF + Faststart streaming)",
+    input_cls=WebOptimizerInput,
+    steps=[
+        PipelineStepSpec[WebOptimizerInput](
+            id="step_resize",
+            action=resize_video_spec,
+            build_step_input=lambda p, o: ResizeVideoInput(
+                input_file=p.input_file,
+                resolution=p.resolution
+            )
+        ),
+        PipelineStepSpec[WebOptimizerInput](
+            id="step_compress",
+            action=compress_crf_spec,
+            build_step_input=lambda p, o: CompressCrfInput(
+                input_file=o["_previous"],
+                crf=p.crf_quality,
+                preset="slow"
+            )
+        ),
+        PipelineStepSpec[WebOptimizerInput](
+            id="step_faststart",
+            action=faststart_web_spec,
+            build_step_input=lambda p, o: FaststartWebInput(
+                input_file=o["_previous"]
+            )
+        )
+    ]
+)
+
+
+# ─── 3. FABRIQUE DE GIF ANIMÉ (TRIM -> GIF PALETTE) ──────────────────────────
+pipeline_pro_gif_maker = PipelineSpec[ProGifMakerInput](
+    id="pipeline_pro_gif_maker",
+    label="Générateur de GIF animé (Découpe d'extrait + Palette 256 couleurs)",
+    input_cls=ProGifMakerInput,
+    steps=[
+        PipelineStepSpec[ProGifMakerInput](
+            id="step_trim_copy",
+            action=trim_with_copy_spec,
+            build_step_input=lambda p, o: TrimVideoInput(
+                input_file=p.input_file,
+                start_seconds=p.start_seconds,
+                duration_seconds=p.duration_seconds
+            )
+        ),
+        PipelineStepSpec[ProGifMakerInput](
+            id="step_palette_gif",
+            action=video_to_gif_spec,
+            build_step_input=lambda p, o: VideoToGifInput(
+                input_file=o["_previous"],
+                fps=p.fps,
+                width=p.width,
+                duration_s=p.duration_seconds
+            )
+        )
+    ]
+)
+
+
+# ─── 4. SOUS-TITRAGE HARDSUB + FORMAT VERTICAL ───────────────────────────────
+pipeline_hardsub_social = PipelineSpec[HardsubSocialInput](
+    id="pipeline_hardsub_social",
+    label="Vidéo Sociale Sous-titrée (Incrustation SRT en dur + Format 9:16)",
+    input_cls=HardsubSocialInput,
+    steps=[
+        PipelineStepSpec[HardsubSocialInput](
+            id="step_burn_sub",
+            action=burn_subtitles_spec,
+            build_step_input=lambda p, o: BurnSubtitlesInput(
+                input_file=p.input_file,
+                subtitles_file=p.subtitles_file
+            )
+        ),
+        PipelineStepSpec[HardsubSocialInput](
+            id="step_vertical",
+            action=social_vertical_spec,
+            build_step_input=lambda p, o: SocialVerticalInput(
+                input_file=o["_previous"],
+                mode=p.vertical_mode
+            )
+        )
+    ]
+)
+
+
+# ─── 5. ACCÉLÉRATION TIMELAPSE MUET (SPEED -> MUTE) ──────────────────────────
+pipeline_speedup_mute = PipelineSpec[SpeedupMuteInput](
+    id="pipeline_speedup_mute",
+    label="Timelapse Vidéo (Accélération x2 + Coupure définitive du son)",
+    input_cls=SpeedupMuteInput,
+    steps=[
+        PipelineStepSpec[SpeedupMuteInput](
+            id="step_speed",
+            action=speed_video_spec,
+            build_step_input=lambda p, o: SpeedVideoInput(
+                input_file=p.input_file,
+                speed_factor=p.speed_factor
+            )
+        ),
+        PipelineStepSpec[SpeedupMuteInput](
+            id="step_mute",
+            action=mute_video_spec,
+            build_step_input=lambda p, o: MuteVideoInput(
+                input_file=o["_previous"]
+            )
+        )
+    ]
+)
+
+
+# =============================================================================
+# COLLECTE AUTOMATIQUE DU MODULE
+# =============================================================================
+PIPELINES_VIDEO_ACTIONS = collect_specs(__name__, spec_type=PipelineSpec)
+__all__ = ["PIPELINES_VIDEO_ACTIONS"]============================

@@ -1,0 +1,579 @@
+/* ==========================================================================
+   HOME / ACCUEIL — WORKBENCH MEDIAKIT
+   Design système vivant, typé et piloté par index.css
+   ========================================================================== */
+
+.wb-home-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4) var(--space-8);
+  font-family: var(--font-body);
+}
+
+/* ─── 1. HERO SECTION ─── */
+.wb-home-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--space-7) var(--space-4) var(--space-6);
+  background: radial-gradient(ellipse 700px 300px at 50% 0%, var(--accent-soft), transparent 75%);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border);
+  position: relative;
+  overflow: hidden;
+}
+
+.wb-home-hero__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 14px;
+  border-radius: var(--radius-full);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border-strong);
+  color: var(--accent-strong);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin-bottom: var(--space-4);
+  box-shadow: var(--shadow-sm);
+}
+
+.wb-home-hero__version {
+  font-size: 0.68rem;
+  padding: 1px 6px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.wb-home-hero__badge-icon {
+  color: var(--accent);
+}
+
+.wb-home-hero__title {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4.5vw, 3.2rem);
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--text-primary);
+  max-width: 840px;
+  letter-spacing: -0.03em;
+  margin-bottom: var(--space-4);
+}
+
+.wb-home-hero__gradient {
+  background: linear-gradient(135deg, var(--accent-strong), var(--text-primary) 80%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.wb-home-hero__subtitle {
+  font-size: clamp(0.95rem, 1.8vw, 1.12rem);
+  line-height: 1.6;
+  color: var(--text-secondary);
+  max-width: 700px;
+  margin: 0 0 var(--space-6);
+}
+
+.wb-home-hero__subtitle .highlight {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.wb-home-hero__actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-7);
+}
+
+.wb-home-cta-btn {
+  padding: 12px 26px;
+  font-size: 1rem;
+  border-radius: var(--radius-md);
+  box-shadow: 0 0 20px var(--accent-soft);
+}
+
+.wb-home-secondary-btn {
+  padding: 12px 20px;
+  font-size: 0.95rem;
+}
+
+/* Hero Stats Bar */
+.wb-home-hero__stats {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-6);
+  padding: var(--space-3) var(--space-6);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  flex-wrap: wrap;
+}
+
+.wb-home-stat {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.wb-home-stat__emoji {
+  font-size: 1.3rem;
+}
+
+.wb-home-stat__info {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+
+.wb-home-stat__value {
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.wb-home-stat__label {
+  font-size: 0.74rem;
+  color: var(--text-tertiary);
+}
+
+.wb-home-stat__divider {
+  width: 1px;
+  height: 24px;
+  background: var(--border);
+}
+
+/* ─── 2. SECTION COMPARATIF AVANT / APRES ─── */
+.wb-home-showcase-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.wb-home-showcase-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--space-4);
+}
+
+.wb-showcase-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+}
+
+.wb-showcase-card--cli {
+  background: #030508;
+  border: 1px solid var(--border);
+}
+
+.wb-showcase-card--workbench {
+  background: var(--bg-surface);
+  border: 1px solid var(--accent);
+  box-shadow: 0 0 20px var(--accent-soft);
+}
+
+.wb-showcase-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.wb-showcase-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.wb-showcase-badge.is-cli {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+}
+
+.wb-showcase-badge.is-wb {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.wb-showcase-status {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.wb-showcase-code {
+  background: #000;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: #a7f3d0;
+  overflow-x: auto;
+}
+
+.cmd-name { color: #f43f5e; font-weight: 700; }
+.cmd-str { color: #facc15; }
+
+.wb-showcase-gui-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+.wb-gui-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8rem;
+}
+
+.gui-label { color: var(--text-tertiary); }
+.gui-val { font-weight: 600; color: var(--text-primary); }
+
+.wb-showcase-bullets {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wb-showcase-bullets li {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+/* ─── 3. SECTIONS COMMUNES ─── */
+.wb-home-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.wb-home-section__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  text-align: center;
+  align-items: center;
+}
+
+.wb-home-section__tag {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--accent-strong);
+}
+
+.wb-home-section__title {
+  font-size: clamp(1.5rem, 3vw, 2.2rem);
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.wb-home-section__desc {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  max-width: 620px;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ─── Grille 3 Colonnes ─── */
+.wb-home-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--space-4);
+}
+
+/* ─── Cartes Outils (FFmpeg, SoX, Magick) ─── */
+.wb-home-card {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-5);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  transition: transform var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease), box-shadow var(--duration-fast) var(--ease);
+}
+
+.wb-home-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+}
+
+.wb-home-card__icon-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+
+.wb-home-card__tool-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border-strong);
+  color: var(--accent-strong);
+}
+
+.wb-home-card__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.wb-home-card__body {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0 0 var(--space-4);
+  flex: 1;
+}
+
+.wb-home-card__features {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-3) 0 0;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.wb-home-card__features li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.8rem;
+  color: var(--text-primary);
+}
+
+.feature-check {
+  color: var(--success);
+  flex-shrink: 0;
+}
+
+/* ─── 4. BANNIÈRE PIPELINE CROISÉ ─── */
+.wb-home-pipeline-banner {
+  position: relative;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+}
+
+.wb-home-pipeline-banner__glow {
+  position: absolute;
+  top: -100px;
+  right: -100px;
+  width: 300px;
+  height: 300px;
+  background: var(--accent-soft);
+  filter: blur(80px);
+  pointer-events: none;
+}
+
+.wb-home-pipeline-banner__content {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: var(--space-6);
+  padding: var(--space-7);
+  align-items: center;
+}
+
+.wb-home-pipeline-banner__left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.wb-home-pipeline-tag {
+  width: fit-content;
+}
+
+.wb-home-pipeline-banner__title {
+  font-size: clamp(1.4rem, 2.5vw, 1.85rem);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  line-height: 1.25;
+}
+
+.wb-home-pipeline-banner__text {
+  font-size: 0.92rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0 0 var(--space-2);
+}
+
+.wb-pipeline-flow-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.wb-pipeline-node {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.wb-pipeline-node--final {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.wb-pipeline-node__emoji {
+  font-size: 1.3rem;
+}
+
+.wb-pipeline-node__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wb-pipeline-node__name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.wb-pipeline-node__desc {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.wb-pipeline-arrow {
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--accent-strong);
+  font-family: var(--font-mono);
+}
+
+/* ─── 5. SÉCURITÉ & ARCHITECTURE ─── */
+.wb-home-sec-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-5);
+}
+
+.wb-home-sec-card__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  margin-bottom: var(--space-1);
+}
+
+.wb-home-sec-card h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.wb-home-sec-card p {
+  font-size: 0.84rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* ─── 6. FOOTER CTA ─── */
+.wb-home-footer-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-3);
+  padding: var(--space-7) var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+}
+
+.wb-home-footer-cta__title {
+  font-size: clamp(1.4rem, 2.5vw, 1.8rem);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.wb-home-footer-cta__desc {
+  font-size: 0.92rem;
+  color: var(--text-secondary);
+  max-width: 550px;
+  margin: 0 0 var(--space-3);
+}
+
+/* ─── RESPONSIVE ─── */
+@media (max-width: 860px) {
+  .wb-home-pipeline-banner__content {
+    grid-template-columns: 1fr;
+  }
+  .wb-home-hero__stats {
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+  .wb-home-stat__divider {
+    display: none;
+  }
+}

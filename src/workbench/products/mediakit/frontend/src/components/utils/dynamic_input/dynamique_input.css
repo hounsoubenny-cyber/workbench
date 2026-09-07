@@ -1,0 +1,278 @@
+/* ==========================================================================
+   DYNAMIC INPUT — WORKBENCH MEDIAKIT
+   Composant de saisie universel piloté par les variables CSS de index.css
+   ========================================================================== */
+
+.wb-dyn-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+  text-align: left;
+}
+
+/* ─── En-tête : Label, Astérisque et Badge de type ─── */
+.wb-dyn-field__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.wb-dyn-field__label {
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  user-select: none;
+}
+
+.wb-dyn-field__required {
+  color: var(--danger);
+  margin-left: var(--space-1);
+  font-weight: 700;
+}
+
+.wb-dyn-field__type-badge {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.wb-dyn-field__control {
+  width: 100%;
+}
+
+.wb-dyn-field__description {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+/* ─── Contrôles Textuels & Numériques (Inputs) ─── */
+.wb-dyn-input,
+.wb-dyn-select {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  padding: 9px 14px;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  transition:
+    border-color var(--duration-fast) var(--ease),
+    box-shadow var(--duration-fast) var(--ease),
+    background-color var(--duration-fast) var(--ease);
+}
+
+.wb-dyn-input:focus,
+.wb-dyn-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: none;
+}
+
+.wb-dyn-input:disabled,
+.wb-dyn-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--bg-surface);
+}
+
+.wb-dyn-select option {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+/* ─── Numérique avec Bornes [min à max] ─── */
+.wb-dyn-number-wrapper {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.wb-dyn-bounds {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* ─── Toggle Switch Booléen ─── */
+.wb-dyn-toggle-wrapper {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-1) 0;
+}
+
+.wb-dyn-toggle {
+  position: relative;
+  display: inline-flex;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+  cursor: pointer;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface-2);
+  padding: 2px;
+  transition:
+    background-color var(--duration-base) var(--ease),
+    border-color var(--duration-base) var(--ease);
+}
+
+.wb-dyn-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.wb-dyn-toggle--checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.wb-dyn-toggle--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.wb-dyn-toggle__thumb {
+  pointer-events: none;
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-full);
+  background: var(--accent-contrast);
+  box-shadow: var(--shadow-sm);
+  transform: translateX(0);
+  transition: transform var(--duration-base) var(--ease);
+}
+
+.wb-dyn-toggle--checked .wb-dyn-toggle__thumb {
+  transform: translateX(20px);
+}
+
+.wb-dyn-toggle__label {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+/* ─── Zone d'Upload & Dropzone (Drag & Drop) ─── */
+.wb-dyn-upload {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.wb-dyn-upload__dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-5);
+  background: var(--bg-surface-2);
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  text-align: center;
+  transition:
+    border-color var(--duration-fast) var(--ease),
+    background-color var(--duration-fast) var(--ease),
+    transform var(--duration-fast) var(--ease);
+}
+
+.wb-dyn-upload__dropzone:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.wb-dyn-upload__dropzone--active {
+  border-color: var(--accent-strong);
+  background: var(--accent-soft);
+  transform: scale(0.995);
+}
+
+.wb-dyn-upload__dropzone--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  border-color: var(--border);
+  background: var(--bg-surface);
+}
+
+.wb-dyn-upload__icon {
+  width: 32px;
+  height: 32px;
+  margin-bottom: var(--space-1);
+  color: var(--text-tertiary);
+  transition: color var(--duration-fast) var(--ease);
+}
+
+.wb-dyn-upload__dropzone:hover .wb-dyn-upload__icon {
+  color: var(--accent-strong);
+}
+
+.wb-dyn-upload__primary-text {
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.wb-dyn-upload__subtext {
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.wb-dyn-upload__input-hidden {
+  display: none;
+}
+
+/* Chips des fichiers sélectionnés */
+.wb-dyn-upload__file-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.wb-dyn-upload__file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.wb-dyn-upload__file-name {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-dyn-upload__file-meta {
+  color: var(--text-tertiary);
+  font-size: 0.7rem;
+}
