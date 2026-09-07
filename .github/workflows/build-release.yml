@@ -10,6 +10,7 @@ jobs:
   build:
     permissions:
       contents: write
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -49,6 +50,14 @@ jobs:
           pip install -r requirements.txt
           pip install -r ${{ env.MEDIAKIT_DIR }}/requirements.txt
           pip install pyinstaller
+
+      # ─── Windows Defender ralentit/bloque PyInstaller (scan temps réel de
+      # chaque DLL pendant "Looking for dynamic libraries") — désactivation
+      # temporaire, le runner GitHub tourne déjà en admin ───
+      - name: Désactiver Windows Defender temporairement
+        if: matrix.platform == 'windows-latest'
+        shell: powershell
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
 
       - name: Compiler le backend avec PyInstaller (.spec)
         working-directory: ${{ env.MEDIAKIT_DIR }}/api
