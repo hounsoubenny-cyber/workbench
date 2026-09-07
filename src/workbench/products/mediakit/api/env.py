@@ -27,18 +27,18 @@ def check_path(path: str):
 
 def check_port(port: int, check_is_open: bool = False):
     if not port:
-        raise StartAppError("Port is missing")
+        raise StartAppError(f"Port absent, variable {PORT_KEY!r} absente ou {AUTO_CHOOSE_KEY!r} mis à 0")
     
     try:
         port = int(port)
     except ValueError:
-        raise StartAppError("Port is not available")
+        raise StartAppError("Port invalide !")
     
     sock = socket.socket()
     r = sock.connect_ex(("127.0.0.1", port))
     sock.close()
     if r == 0:
-        raise StartAppError("Port is not open")
+        raise StartAppError("Port occupé !")
      
     return port
 

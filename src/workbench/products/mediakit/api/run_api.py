@@ -66,12 +66,15 @@ def run_api():
 if __name__ == '__main__':
     try:
         import nest_asyncio
-        from workbench.products.mediakit.api.errors import StartAppError
+        from workbench.products.mediakit.api.errors import StartAppError, InvalidConfigError
 
         nest_asyncio.apply()
         run_api()
 
     except StartAppError as e:
+        print(f"Erreur de démarrage: {e!r}")
+    
+    except InvalidConfigError as e:
         print(f"Erreur de démarrage: {e!r}")
 
     except SystemExit:
