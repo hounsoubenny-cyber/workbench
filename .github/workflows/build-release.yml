@@ -59,6 +59,20 @@ jobs:
         shell: powershell
         run: Set-MpPreference -DisableRealtimeMonitoring $true
 
+      # ─── Le PATH par défaut des runners Windows GitHub contient énormément
+      # d'entrées (Docker, Android SDK, Chocolatey, Ruby...) — PyInstaller
+      # peut bloquer en scannant ces dossiers à la recherche de DLLs. On
+      # réduit le PATH au strict nécessaire pour cette étape uniquement.
+      - name: Réduire le PATH pour PyInstaller (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: powershell
+        run: |
+          $pythonDir = Split-Path (Get-Command python).Source
+          echo "$pythonDir" >> $env:GITHUB_PATH
+          echo "$pythonDir\Scripts" >> $env:GITHUB_PATH
+          echo "C:\Windows\system32" >> $env:GITHUB_PATH
+          echo "C:\Windows" >> $env:GITHUB_PATH
+
       - name: Compiler le backend avec PyInstaller (.spec)
         working-directory: ${{ env.MEDIAKIT_DIR }}/api
         env:
