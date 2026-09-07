@@ -57,23 +57,27 @@ jobs:
       - name: Désactiver Windows Defender temporairement
         if: matrix.platform == 'windows-latest'
         shell: powershell
-        run: Set-MpPreference -DisableRealtimeMonitoring $true
+        continue-on-error: true
+        run: |
+          Set-MpPreference -DisableRealtimeMonitoring $true
+          Add-MpPreference -ExclusionPath "D:\a"
+          Add-MpPreference -ExclusionProcess "pyinstaller.exe"
+          Add-MpPreference -ExclusionProcess "python.exe"
 
-      # ─── Le PATH par défaut des runners Windows GitHub contient énormément
-      # d'entrées (Docker, Android SDK, Chocolatey, Ruby...) — PyInstaller
-      # peut bloquer en scannant ces dossiers à la recherche de DLLs. On
-      # réduit le PATH au strict nécessaire pour cette étape uniquement.
-      - name: Réduire le PATH pour PyInstaller (Windows)
+      - name: Compiler le backend avec PyInstaller (.spec) — Windows
         if: matrix.platform == 'windows-latest'
-        shell: powershell
+        working-directory: ${{ env.MEDIAKIT_DIR }}/api
+        shell: pwsh
+        env:
+          PYTHONUTF8: "1"
         run: |
           $pythonDir = Split-Path (Get-Command python).Source
-          echo "$pythonDir" >> $env:GITHUB_PATH
-          echo "$pythonDir\Scripts" >> $env:GITHUB_PATH
-          echo "C:\Windows\system32" >> $env:GITHUB_PATH
-          echo "C:\Windows" >> $env:GITHUB_PATH
+          $env:Path = "$pythonDir;$pythonDir\Scripts;C:\Windows\system32;C:\Windows"
+          Write-Host "PATH réduit à : $env:Path"
+          pyinstaller mediakit.spec
 
-      - name: Compiler le backend avec PyInstaller (.spec)
+      - name: Compiler le backend avec PyInstaller (.spec) — Unix
+        if: matrix.platform != 'windows-latest'
         working-directory: ${{ env.MEDIAKIT_DIR }}/api
         env:
           PYTHONUTF8: "1"
