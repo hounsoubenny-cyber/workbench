@@ -61,7 +61,7 @@ Le backend démarre, choisit un port libre automatiquement, et ouvre votre navig
 1. Téléchargez le binaire correspondant à votre OS depuis la page **Releases** du dépôt.
 2. Lancez-le :
    - **Windows / macOS** : double-clic sur le fichier.
-   - **Linux** : rendez-le exécutable une première fois si besoin (`chmod +x mediakit-backend`), puis lancez-le depuis un terminal avec `./mediakit-backend`.
+   - **Linux** : rendez-le exécutable une première fois si besoin (`chmod +x mediakit-backend`), puis lancez-le depuis un terminal avec `./mediakit-backend` après avoir définit les variables d'environnements.
 3. Votre navigateur s'ouvre automatiquement sur l'interface.
 4. Pour fermer l'application, fermez la fenêtre de terminal qui s'est ouverte (ou `Ctrl+C`).
 
@@ -153,4 +153,4 @@ Une fois Mediakit lancé, l'interface signale aussi l'absence ou l'incompatibili
 
 ## 📜 Licence
 
-Ce produit est distribué sous licence **propriétaire** — voir le fichier `LICENSE` de ce dossier. Le framework [Workbench](../../../../README.md) sous-jacent reste sous licence **Apache 2.0**.
+Ce produit est distribué sous licence **propriétaire** — voir le fichier `LICENSE` de ce dossier. Le framework [Workbench](https://github.com/hounsoubenny-cyber/workbench) sous-jacent reste sous licence **Apache 2.0**.
