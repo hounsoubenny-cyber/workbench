@@ -27,7 +27,7 @@ from workbench.api.config import WbConfig
 from workbench.core.orchestrator import MainEngine
 from workbench.wb_utils.job_file_cleaner import AsyncJobFileCleaner
 from workbench.api.create_routes import create_router
-from workbench.examples.demo_catalog import get_spec, show_catalog
+from workbench.examples.demo_catalog import get_spec, show_catalog, get_binary_config
 
 config = WbConfig(max_concurrent_job=5, buffer_max_lines=2_000, buffer_clear_delay=15)
 orchestrator = MainEngine(config)
@@ -37,6 +37,7 @@ router = create_router(
     orchestrator=orchestrator,
     show_specs_func=show_catalog,
     get_spec_func=get_spec,
+    get_binary_config=get_binary_config,
     job_file_cleaner=job_file_cleaner,
 )
 

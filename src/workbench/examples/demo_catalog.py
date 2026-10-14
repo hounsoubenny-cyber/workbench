@@ -253,7 +253,7 @@ _ACTION_SPECS: dict = collect_specs(__name__)
 # collect_specs() ne connait que les ActionSpec (voir specs/registry.py,
 # isinstance(obj, ActionSpec)) — les PipelineSpec ne sont pas "collectees"
 # automatiquement, on les ajoute nous-memes au dict complet.
-FULL_CATALOG: dict = {**_ACTION_SPECS}
+FULL_CATALOG: dict = {**_ACTION_SPECS, pipeline_spec.id: pipeline_spec}
 
 
 def get_spec(spec_id: str):
@@ -286,3 +286,19 @@ def show_catalog() -> dict:
                 "tool": spec.tool,
             }
     return out
+
+
+# Configs de détection de version des binaires de démo (utilisées par la route
+# /job/advanced/create et par `GET /binary/...`). Même source de vérité pour le
+# serveur de démo et les tests.
+_BINARY_CONFIGS = {
+    "ls": BinVersionCheckerConfig(cmd="--version", marker="coreutils", tool_name="ls"),
+    "cat": BinVersionCheckerConfig(cmd="--version", marker="coreutils", tool_name="cat"),
+    "grep": BinVersionCheckerConfig(cmd="--version", marker="grep", tool_name="grep"),
+    "ffmpeg": BinVersionCheckerConfig(cmd="-version", marker="ffmpeg", tool_name="ffmpeg"),
+}
+
+
+def get_binary_config(tool_name: str) -> BinVersionCheckerConfig:
+    """Config de version d'un binaire de démo. KeyError si l'outil est inconnu."""
+    return _BINARY_CONFIGS[tool_name]

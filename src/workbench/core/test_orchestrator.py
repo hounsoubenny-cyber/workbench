@@ -65,6 +65,7 @@ grep_bin_config = BinVersionCheckerConfig(
 ls_action_spec = ActionSpec[LsInput](
     id="list_directory",
     label="Lister les fichiers du dossier",
+    input_cls=LsInput,
     tool="ls",
     binary_config=ls_bin_config,
     output_filename_template="ls_output.txt",
@@ -78,6 +79,7 @@ ls_action_spec = ActionSpec[LsInput](
 grep_action_spec = ActionSpec[GrepInput](
     id="filter_pattern",
     label="Filtrer un fichier texte",
+    input_cls=GrepInput,
     tool="grep",
     binary_config=grep_bin_config,
     output_filename_template="filtered_output.txt",
@@ -91,6 +93,7 @@ grep_action_spec = ActionSpec[GrepInput](
 pipeline_spec = PipelineSpec[PipelineFilterInput](
     id="ls_then_grep_pipeline",
     label="Lister puis filtrer par mot-clé",
+    input_cls=PipelineFilterInput,
     steps=[
         # Étape 1 : ls (on capture son stdout dans ls_output.txt)
         PipelineStepSpec[PipelineFilterInput](
