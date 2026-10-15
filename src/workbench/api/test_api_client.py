@@ -13,6 +13,7 @@ from workbench.api.config import WbConfig
 from workbench.core.orchestrator import MainEngine
 from workbench.wb_utils.job_file_cleaner import AsyncJobFileCleaner
 from workbench.api.create_routes import create_router
+from workbench.core.subprocess.version_checker import Config as BinVersionCheckerConfig
 
 # Mock rapide des specs
 MOCK_CATALOG = {
@@ -43,6 +44,9 @@ router = create_router(
     orchestrator=orchestrator,
     show_specs_func=show_catalog,
     get_spec_func=get_fake_spec,
+    get_binary_config=lambda tool: BinVersionCheckerConfig(
+        cmd="--version", marker=tool, tool_name=tool
+    ),
     job_file_cleaner=cleaner
 )
 

@@ -398,10 +398,18 @@ class MainEngine:
             )
             
         else: # Pipeline
-            exec_result: Dict = await entry.pipeline.run(
+            outputs: Dict = await entry.pipeline.run(
                 initial_inputs=dict(entry.user_input),
                 on_output=on_output,
             )
+            # FIX : `pipeline.run` renvoie aussi les entrées de l'utilisateur
+            # (mots de passe, jetons...). On ne renvoie au client — et on ne
+            # stocke dans le buffer rejoué — que les sorties d'étapes.
+            step_ids = {step.id for step in entry.spec.steps}
+            exec_result: Dict = {
+                "success": True, "ok": True,   # toutes les étapes ont réussi
+                **{k: v for k, v in outputs.items() if k in step_ids or k == "_previous"},
+            }
             for f in entry.output_files:
                 real_file = exec_result.get(f["id"])
                 if real_file is not None:

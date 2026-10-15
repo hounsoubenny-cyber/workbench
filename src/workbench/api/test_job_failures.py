@@ -1,5 +1,8 @@
 """
-Workbench — un job qui PLANTE doit être signalé au client.
+Workbench — issue des jobs : un job qui PLANTE doit être signalé au client,
+et le résultat d'un pipeline ne doit pas renvoyer les entrées saisies.
+
+Premier point :
 
 Avant le correctif, une exception levée pendant l'exécution (fichier requis
 absent, étape de pipeline en échec, timeout...) sortait de `execute_entry`
@@ -66,7 +69,21 @@ broken_pipeline = PipelineSpec[Empty](
     ],
 )
 
-SPECS = {s.id: s for s in (broken_action, ok_action, broken_pipeline)}
+class SecretInput(BaseModel):
+    password: str
+
+
+secret_pipeline = PipelineSpec[SecretInput](
+    id="secret_pipeline", label="Pipeline dont l'entrée contient un secret", input_cls=SecretInput,
+    steps=[
+        PipelineStepSpec[SecretInput](
+            id="step_ls", action=ok_action,
+            build_step_input=lambda p, o: Empty(), capture_stdout=True,
+        ),
+    ],
+)
+
+SPECS = {s.id: s for s in (broken_action, ok_action, broken_pipeline, secret_pipeline)}
 
 
 def _build_app():
@@ -94,10 +111,10 @@ def _build_app():
     return app
 
 
-def _create(client: TestClient, spec_id: str) -> str:
+def _create(client: TestClient, spec_id: str, user_input: dict | None = None) -> str:
     r = client.post(
         "/job/create",
-        data={"data": json.dumps({"id": spec_id, "user_input": {}, "timeout": 20})},
+        data={"data": json.dumps({"id": spec_id, "user_input": user_input or {}, "timeout": 20})},
         files=[],
     )
     assert r.status_code == 200, r.text
@@ -156,3 +173,19 @@ def test_healthy_job_still_finishes_normally():
         assert not [m for m in messages if m.get("type") == "job_error"]
         result = next(m for m in messages if m.get("type") == "job_result")
         assert result["result"]["success"] is True
+
+
+def test_pipeline_result_does_not_echo_user_inputs():
+    """
+    Les entrées saisies (mot de passe...) ne doivent JAMAIS repartir dans
+    `job_result` (envoyé au client, stocké dans le buffer, rejoué à chaque
+    reconnexion). Seules les sorties d'étapes sont renvoyées.
+    """
+    with TestClient(_build_app()) as client:
+        job_id = _create(client, "secret_pipeline", {"password": "hunter2-S3CRET"})
+        assert _wait_status(client, job_id, JobStatus.FINISHED.value) == JobStatus.FINISHED.value
+        messages = _collect_ws(client, job_id)
+        assert "hunter2-S3CRET" not in json.dumps(messages)
+        result = next(m for m in messages if m.get("type") == "job_result")["result"]
+        assert result["step_ls"] == "ls.txt"          # la sortie d'étape reste là
+        assert result["success"] is True
