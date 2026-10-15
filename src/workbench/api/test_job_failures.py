@@ -189,3 +189,20 @@ def test_pipeline_result_does_not_echo_user_inputs():
         result = next(m for m in messages if m.get("type") == "job_result")["result"]
         assert result["step_ls"] == "ls.txt"          # la sortie d'étape reste là
         assert result["success"] is True
+
+
+def test_advanced_jobs_can_be_disabled():
+    """Un produit peut couper le mode manuel (drapeaux libres) : 404 dédié."""
+    orchestrator = MainEngine(WbConfig())
+    router = create_router(
+        orchestrator=orchestrator, show_specs_func=lambda: {}, get_spec_func=SPECS.get,
+        get_binary_config=lambda tool: LS_CONFIG,
+        job_file_cleaner=AsyncJobFileCleaner(default_ttl=60, every=5),
+        enable_advanced_jobs=False,
+    )
+    app = FastAPI()
+    app.include_router(router)
+    with TestClient(app) as client:
+        r = client.post("/job/advanced/create", data={"data": "{}"}, files=[])
+        assert r.status_code == 404
+        assert r.json()["detail"]["error_code"] == "ADVANCED_JOBS_DISABLED"

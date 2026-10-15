@@ -193,8 +193,15 @@ def create_router(
     get_spec_func: Callable,
     get_binary_config: Callable,
     job_file_cleaner: AsyncJobFileCleaner,
-    save_config_func: Callable | None = None
+    save_config_func: Callable | None = None,
+    enable_advanced_jobs: bool = True,
 ):
+    """
+    `enable_advanced_jobs=False` désactive `/job/advanced/create` (mode manuel).
+    Ce mode laisse le CLIENT choisir librement les drapeaux passés au binaire
+    (ex : `--lua-filter` pour pandoc = exécution de code) : à réserver aux
+    produits « utilisateur avancé » (Mediakit). Les autres le coupent.
+    """
     router = APIRouter()
     
     @router.get("/download")
@@ -400,6 +407,12 @@ def create_router(
         data: str = Form(...),
         files: list[UploadFile] = File(default_factory=list),
     ):
+        if not enable_advanced_jobs:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error_code": "ADVANCED_JOBS_DISABLED",
+                        "message": "Le mode manuel est désactivé pour ce produit."},
+            )
         try:
             try:
                 raw = json.loads(data)

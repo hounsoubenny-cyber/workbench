@@ -13,6 +13,7 @@ import logging
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from workbench.wb_utils.static_files import resolve_static_file
+from workbench.wb_utils.local_guard import LocalOnlyGuard
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -108,6 +109,9 @@ app.add_middleware(
         "https://fonts.gstatic.com"
     ]
 )
+# Dernier ajouté = le plus externe : refuse Host/Origin non locaux (CSRF, WebSocket
+# cross-site, DNS rebinding) avant même CORS. Voir wb_utils/local_guard.py.
+app.add_middleware(LocalOnlyGuard)
 
 if FRONTEND_EXISTS:
     app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="frontend_assets")
