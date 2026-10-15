@@ -7,6 +7,7 @@ Created on Wed Sep  2 00:08:16 2026
 """
 
 import asyncio
+import logging
 from pathlib import Path
 from secrets import token_urlsafe
 from dataclasses import dataclass
@@ -23,6 +24,8 @@ from workbench.wb_utils.tasks_utils import stop_task
 from workbench.wb_utils.funcs_utils import exec_func
 from workbench.wb_utils.job_buffer_manager import JobBufferManager, JobStatus
 from workbench.wb_utils.job_file_cleaner import AsyncJobFileCleaner
+
+logger = logging.getLogger(__name__)
 Spec = Union[PipelineSpec, ActionSpec]
 
 @dataclass
@@ -323,6 +326,48 @@ class MainEngine:
         timeout: float | None = 300,
         exec_callback: Callable | None = None,
     ):
+        """
+        Exécute le job ET garantit que le client est prévenu de son issue.
+
+        FIX : avant, une exception levée pendant l'exécution (fichier requis
+        absent, étape de pipeline en échec, timeout...) s'échappait de la
+        tâche asyncio sans rien envoyer : statut « running » pour toujours,
+        ni `job_result` ni `job_end` sur le WebSocket (l'interface attendait
+        indéfiniment), puis `/job/status` répondait « finished » une fois le
+        job purgé. Désormais : statut `failed`, messages `job_error`,
+        `job_result` (success=False) et `job_end`.
+        """
+        try:
+            return await self._run_entry(entry, timeout, exec_callback)
+        except asyncio.CancelledError:
+            raise  # stop_job() / arrêt du serveur : pas une erreur à signaler
+        except Exception as exc:
+            await self._report_failure(entry, exc)
+            return entry
+
+    async def _report_failure(self, entry: _TaskEntry, exc: Exception) -> None:
+        # Import local : error_mapper importe ce module (import circulaire).
+        from workbench.wb_utils.error_mapper import map_orchestrator_error
+
+        logger.warning("Job en échec : %r", exc, exc_info=exc)
+        mapped = map_orchestrator_error(exc)
+        payload = {"error_code": mapped["error_code"], "message": mapped["message"]}
+        if mapped.get("details"):
+            payload["details"] = mapped["details"]
+
+        buffer = entry.job_buffer_manager
+        entry.exec_result = {"success": False, "ok": False, **payload}
+        buffer.status = JobStatus.FAILED.value
+        await buffer.send(message={"type": "job_error", **payload})
+        await buffer.send(message={"type": "job_result", "result": entry.exec_result})
+        await buffer.send(message={"type": "job_end"})
+
+    async def _run_entry(
+        self,
+        entry: _TaskEntry,
+        timeout: float | None = 300,
+        exec_callback: Callable | None = None,
+    ):
         job_buffer_manager = entry.job_buffer_manager
         
         async def on_output(*args, **kwargs):
@@ -413,7 +458,15 @@ class MainEngine:
             r = entry.exec_result
             if hasattr(r, "to_dict"):
                 r = r.to_dict()
-                
+
+            # Pas de replay pour un job `failed` : on renvoie l'erreur à la main.
+            if (entry.job_buffer_manager.status == JobStatus.FAILED
+                    and isinstance(r, dict) and r.get("error_code")):
+                error = {"type": "job_error", **{
+                    k: r[k] for k in ("error_code", "message", "details") if k in r
+                }}
+                await entry.job_buffer_manager.send(message=error)
+
             await entry.job_buffer_manager.send(
                 message={"type": "job_result", "result": r}
             )

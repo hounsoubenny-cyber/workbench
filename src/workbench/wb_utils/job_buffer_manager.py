@@ -87,7 +87,10 @@ class JobBufferManager:
             pass
 
     async def disconnect(self) -> None:
-        self.status = JobStatus.FINISHED.value
+        # FIX : ne pas écraser un statut terminal (un job `failed` ou arrêté
+        # redevenait `finished` dès que le client fermait le WebSocket).
+        if self.status not in (JobStatus.FAILED, JobStatus.STOP):
+            self.status = JobStatus.FINISHED.value
         if self.ws:
             try:
                 from starlette.websockets import WebSocketState
