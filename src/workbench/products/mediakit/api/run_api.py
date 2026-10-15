@@ -27,8 +27,14 @@ def run_api():
 
     signal_manager(signal_handler)
 
+    # FIX : `while not started: continue` = boucle active (100 % CPU) et sans fin
+    # si le serveur ne démarre pas (port pris...). On dort, et on abandonne.
+    deadline = time.time() + 30
     while not getattr(server, "started", False):
-        continue
+        if not thread.is_alive() or time.time() > deadline:
+            print("❌ Le serveur n'a pas pu démarrer.", file=sys.stderr)
+            sys.exit(1)
+        time.sleep(0.05)
 
     port = start_config.port
     url = f"http://127.0.0.1:{port}"

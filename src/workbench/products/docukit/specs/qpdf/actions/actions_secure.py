@@ -28,18 +28,10 @@ def _protect_args(u: ProtectInput) -> list:
         PatternArg(value=u.password),
         PatternArg(value=u.owner_password or u.password),
         EnumArg(value="256", enum_values=["256"]),
-        EnumArg(
-            flag="--print", value="full" if u.allow_print else "none",
-            enum_values=["full", "none"],
-        ),
-        EnumArg(
-            flag="--extract", value="y" if u.allow_copy else "n",
-            enum_values=["y", "n"],
-        ),
-        EnumArg(
-            flag="--modify", value="all" if u.allow_modify else "none",
-            enum_values=["all", "none"],
-        ),
+        # qpdf n'accepte ces options que sous la forme collée `--option=valeur`.
+        attached_option("--print", "full" if u.allow_print else "none", r"full|none"),
+        attached_option("--extract", "y" if u.allow_copy else "n", r"y|n"),
+        attached_option("--modify", "all" if u.allow_modify else "none", r"all|none"),
         flag("--"),
     ]
 
