@@ -121,7 +121,8 @@ workbench/                      ← racine du repo git
 │       ├── specs/                ← ActionSpec, PipelineSpec, registry, raw engine
 │       ├── wb_utils/            ← utilitaires partagés (buffers, cleanup, config...)
 │       └── products/
-│           └── mediakit/         ← premier produit construit sur Workbench
+│           ├── mediakit/         ← premier produit construit sur Workbench
+│           └── docukit/          ← boîte à outils PDF & documents (voir son README)
 │               ├── api/
 │               ├── specs/
 │               └── frontend/     ← React + Vite, buildé et servi par FastAPI
@@ -283,7 +284,7 @@ Pour les cas non couverts par une `ActionSpec` déclarée, une commande peut êt
 }
 ```
 
-Le champ `tool` est fixé côté serveur/frontend, jamais laissé libre à l'utilisateur final — la sélection du binaire n'est donc pas un vecteur d'attaque ouvert.
+Dans les actions du catalogue, le champ `tool` est fixé côté serveur. Le **mode manuel** (`/job/advanced/create`) laisse en revanche le client choisir parmi les binaires déclarés ET leurs drapeaux : il se désactive avec `create_router(..., enable_advanced_jobs=False)`. Un serveur local doit aussi être protégé contre les requêtes cross-origin avec `LocalOnlyGuard` (`wb_utils/local_guard.py` : contrôle des en-têtes `Host` et `Origin`).
 
 ---
 
@@ -292,6 +293,7 @@ Le champ `tool` est fixé côté serveur/frontend, jamais laissé libre à l'uti
 | Produit | Statut |
 | :--- | :--- |
 | **Mediakit** | ✅ v1.0.0 — frontend buildé, servi par FastAPI |
+| **Docukit** | ✅ v1.0.0 — boîte à outils PDF & documents (qpdf, poppler, tesseract, pandoc), interface sans build |
 
 ---
 

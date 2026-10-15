@@ -1,0 +1,11 @@
+-r requirements.txt
+
+# --- Tests ---
+pytest==9.0.1
+pytest-asyncio==1.3.0
+httpx==0.28.1
+websockets==16.0
+reportlab==4.2.5          # génère les PDF d'exemple des tests
+
+# --- Packaging desktop (optionnel) ---
+pyinstaller==6.19.0

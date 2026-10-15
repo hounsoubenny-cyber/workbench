@@ -1,0 +1,8 @@
+# --- Socle Workbench Core (exécution) ---
+fastapi==0.122.0
+uvicorn[standard]==0.38.0
+pydantic==2.12.5
+python-multipart==0.0.21
+python-dotenv==1.0.1
+tomli==2.0.2
+tomli_w==1.1.0

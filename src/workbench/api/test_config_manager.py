@@ -4,7 +4,6 @@ Workbench — tests de config_manager (chargement / sauvegarde TOML).
 Lancer :  pytest workbench/api/test_config_manager.py
 """
 
-import pytest
 
 from workbench.api.config import WbConfig
 from workbench.api.config_manager import load_config, save_config

@@ -140,3 +140,20 @@ def test_static_route_cannot_escape_the_frontend_folder(tmp_path):
                        "/static//etc/passwd", "/../secret.txt"):
             r = c.get(attack)
             assert "TOP-SECRET" not in r.text and "root:" not in r.text, attack
+
+
+# ─── Interface servie par l'application ──────────────────────────────────────
+
+def test_the_real_frontend_is_served(client):
+    page = client.get("/")
+    assert page.status_code == 200 and "Docukit" in page.text
+    assert "script-src 'self'" in page.headers["content-security-policy"]
+    assert "<script>" not in page.text and " onclick=" not in page.text and "style=" not in page.text, \
+        "la CSP interdit le code et les styles inline"
+    js, css = client.get("/static/app.js"), client.get("/static/style.css")
+    assert js.status_code == 200 and "javascript" in js.headers["content-type"]
+    assert css.status_code == 200 and "text/css" in css.headers["content-type"]
+    import re
+    code = re.sub(r"/\*.*?\*/", "", js.text, flags=re.S)             # sans commentaires
+    code = re.sub(r"^\s*//.*$", "", code, flags=re.M)
+    assert not re.search(r"innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval\(", code)
