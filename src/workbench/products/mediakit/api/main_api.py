@@ -12,6 +12,7 @@ import sys
 import logging
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from workbench.wb_utils.static_files import resolve_static_file
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -53,7 +54,7 @@ FRONTEND_EXISTS = os.path.isdir(DIST_DIR) and os.path.isfile(INDEX_FILE)
 
 start_config = StartConfig(
     server=None,
-    host="0.0.0.0",
+    host="127.0.0.1",   # FIX : app locale, jamais exposée au réseau (était 0.0.0.0)
     port=PORT,
     log_level=logging.ERROR,
     access_log=False
@@ -184,8 +185,10 @@ async def serve_frontend(full_path: str):
 
     # Fichiers copiés tels quels depuis public/ à la racine de dist/
     # (favicon.ico, robots.txt, manifest.json, images référencées en chemin direct...)
-    candidate = os.path.join(DIST_DIR, full_path)
-    if full_path and os.path.isfile(candidate):
+    # FIX : `os.path.join(DIST_DIR, full_path)` laissait sortir de dist/ avec
+    # `../..` (lecture de n'importe quel fichier de la machine). On borne.
+    candidate = resolve_static_file(DIST_DIR, full_path)
+    if candidate is not None:
         return FileResponse(candidate)
 
     return FileResponse(INDEX_FILE)

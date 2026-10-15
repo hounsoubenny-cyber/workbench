@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 class StartConfig(BaseModel):
     server: None | uvicorn.Server
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"   # FIX : était 0.0.0.0 (API sans authentification exposée au réseau local)
     port: int = 8000
     model_config: ConfigDict = ConfigDict(arbitrary_types_allowed=True)
     access_log: bool = True
