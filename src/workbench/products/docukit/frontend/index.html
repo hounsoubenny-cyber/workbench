@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Docukit — boîte à outils PDF</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%84%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <a class="skip" href="#main">Aller au contenu</a>
+
+  <div class="app">
+    <aside class="sidebar" aria-label="Outils">
+      <header class="brand">
+        <span class="logo" aria-hidden="true">📄</span>
+        <div class="brand-text">
+          <strong>Docukit</strong>
+          <small id="version"></small>
+        </div>
+        <button id="menu-toggle" class="icon-btn menu-toggle" type="button"
+                aria-expanded="false" aria-controls="sidebar-body" aria-label="Afficher les outils">☰</button>
+      </header>
+
+      <div id="sidebar-body" class="sidebar-body">
+        <input id="search" class="search" type="search" placeholder="Rechercher un outil…"
+               aria-label="Rechercher un outil" autocomplete="off">
+        <nav id="nav" class="nav"></nav>
+        <section class="tools-status" aria-labelledby="tools-title">
+          <h2 id="tools-title">Outils installés</h2>
+          <ul id="tools-list"></ul>
+        </section>
+      </div>
+    </aside>
+
+    <main id="main" tabindex="-1">
+      <div id="view"></div>
+      <div id="live" class="sr-only" role="status" aria-live="polite"></div>
+    </main>
+  </div>
+
+  <noscript><p class="banner error">Docukit nécessite JavaScript.</p></noscript>
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>

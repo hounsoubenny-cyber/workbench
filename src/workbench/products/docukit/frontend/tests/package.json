@@ -1,0 +1,8 @@
+{
+  "name": "docukit-ui-smoke",
+  "private": true,
+  "type": "module",
+  "description": "Test de fumée de l'interface Docukit : serveur réel + DOM simulé (jsdom).",
+  "scripts": { "smoke": "node smoke.mjs" },
+  "devDependencies": { "jsdom": "^25.0.0" }
+}
