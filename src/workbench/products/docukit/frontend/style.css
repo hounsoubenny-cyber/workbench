@@ -245,3 +245,5 @@ details.log > summary { cursor: pointer; color: var(--muted); padding: 4px 0; }
 .cat-card .nav-item { padding: 5px 8px; margin-left: -8px; width: calc(100% + 8px); }
 .cat-card { cursor: default; }
 .cat-card:hover { border-color: var(--border); }
+
+#spec-title:focus { outline: none; }

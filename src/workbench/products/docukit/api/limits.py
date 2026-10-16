@@ -84,7 +84,7 @@ CSP = "; ".join([
     "script-src 'self'",
     "style-src 'self'",
     "img-src 'self' blob: data:",
-    "connect-src 'self' ws://127.0.0.1:* ws://localhost:* ws://[::1]:*",
+    "connect-src 'self' ws://127.0.0.1:* ws://localhost:*",
     "frame-src blob:",
     "object-src blob:",
     "base-uri 'none'",

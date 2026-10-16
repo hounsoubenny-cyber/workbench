@@ -83,6 +83,14 @@ function h(tag, props = {}, ...children) {
   return el;
 }
 
+/**
+ * Remplace le contenu de `parent`. N'utilisez JAMAIS replaceChildren() avec un enfant
+ * conditionnel (`cond ? el : null`) : un navigateur écrit alors le TEXTE « null » dans la page.
+ */
+function replace(parent, ...children) {
+  parent.replaceChildren(...children.flat().filter((c) => c != null && c !== false));
+}
+
 const normalize = (s) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 const prettify = (name) => { const s = name.replace(/_/g, " "); return s[0].toUpperCase() + s.slice(1); };
 const extOf = (name) => { const m = /\.([a-z0-9]{1,5})$/i.exec(name); return m ? m[1].toLowerCase() : ""; };
@@ -250,7 +258,7 @@ function renderSpec() {
   const cat = category(s.category);
   const missing = missingTools(s);
   const view = $("#view");
-  view.replaceChildren(
+  replace(view,
     h("div", { class: "crumb" }, h("button", { type: "button", class: "btn", onclick: renderHome }, "← Accueil"),
       ` ${cat.icon} ${cat.label}`),
     h("header", { class: "spec-head" },
@@ -438,7 +446,7 @@ function refreshActions() {
   const busy = !!state.run?.active;
   const problem = selectionProblem();
   const blocked = busy || missingTools().length > 0 || !!problem;
-  box.replaceChildren(
+  replace(box,
     h("button", { type: "submit", class: "btn btn-primary", disabled: blocked }, busy ? "En cours…" : "Lancer"),
     problem ? h("div", { class: "banner warn", role: "status" }, problem) : null);
 }

@@ -111,6 +111,16 @@ for name, n in (("a", 3), ("b", 2)):
     await waitFor(() => { const f = $("#spec-form"); return f && f !== previous; }, `formulaire ${id}`);
   };
 
+  // jsdom IGNORE un `null` passé à replaceChildren(), alors que Chrome/Firefox écrivent le
+  // TEXTE « null » dans la page : on rend ce cas bruyant pour qu'il ne passe jamais inaperçu.
+  const nativeReplace = window.Element.prototype.replaceChildren;
+  window.Element.prototype.replaceChildren = function (...nodes) {
+    if (nodes.some((n) => n == null || n === false)) {
+      throw new Error("replaceChildren a reçu null/false : un vrai navigateur afficherait « null »");
+    }
+    return nativeReplace.apply(this, nodes);
+  };
+
   window.eval(APP_JS);
 
   // ─── 1. Accueil ────────────────────────────────────────────────────────────
@@ -133,6 +143,7 @@ for name, n in (("a", 3), ("b", 2)):
   console.log("\n▸ Fusion de deux PDF");
   await open("qpdf_merge");
   check($("#in-inputs").multiple === true, "champ multi-fichiers");
+  check(!/\bnull\b|undefined/.test($("#view").textContent), "aucun « null » / « undefined » affiché dans le formulaire");
   drop($(".drop"), [makeFile(pdfA, "rapport.pdf"), makeFile(pdfB, "annexe.pdf")]);
   await waitFor(() => $$("#files-inputs li").length === 2, "2 fichiers listés");
   check($$("#files-inputs .name")[0].textContent === "rapport.pdf", "ordre initial respecté");
