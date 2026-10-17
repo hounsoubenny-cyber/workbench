@@ -19,7 +19,8 @@ from workbench.core.subprocess.pipeline import Pipeline
 from workbench.specs.pipeline_spec import PipelineSpec
 from workbench.specs.specs import ActionSpec
 from workbench.core.subprocess.wb_subprocess_types import Arg
-from workbench.core.subprocess.engine import CommandEngine, ExecResult
+from workbench.core.subprocess.engine import CommandEngine, ExecResult, resolve_sandboxed_path
+from workbench.core.subprocess.output_check import verify_output
 from workbench.wb_utils.tasks_utils import stop_task
 from workbench.wb_utils.funcs_utils import exec_func
 from workbench.wb_utils.job_buffer_manager import JobBufferManager, JobStatus
@@ -393,6 +394,12 @@ class MainEngine:
                 output_filename=file,
                 capture_stdout=entry.spec.capture_stdout
             )
+            # FIX : voir core/subprocess/output_check.py (succès sans fichier / fichier vide).
+            if exec_result.ok and file:
+                verify_output(
+                    resolve_sandboxed_path(file, entry.engine.workdir), file,
+                    allow_empty=entry.spec.capture_stdout,
+                )
             await job_buffer_manager.send(
                 message={"type": "job_result", "result": exec_result.to_dict()}
             )

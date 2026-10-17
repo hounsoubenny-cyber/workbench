@@ -15,6 +15,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import Callable, Awaitable, Union
 from pathlib import Path
+from workbench.core.subprocess.output_check import OutputError, verify_output
 from workbench.core.subprocess.engine import (
     CommandEngine, ExecResult, resolve_sandboxed_path,
 )
@@ -104,6 +105,14 @@ class Pipeline:
                 # L'outil n'a rien écrit lui-même : on matérialise nous-mêmes
                 # sa sortie stdout dans le fichier attendu par l'étape suivante.
                 Path(output_path).write_text(result.stdout)
+
+            # FIX : un outil peut sortir en code « acceptable » sans avoir produit son fichier
+            # (ou en le laissant vide). Sans ce contrôle, l'étape suivante échouait avec un
+            # message sans rapport, ou le pipeline se terminait en « succès » avec un fichier vide.
+            try:
+                verify_output(output_path, resolved_filename, allow_empty=step.capture_stdout)
+            except OutputError as exc:
+                raise PipelineError(step.id, exc) from exc
 
             # On stocke le nom RELATIF (pas le chemin absolu résolu) : les
             # PathArg suivants recoivent une valeur relative au

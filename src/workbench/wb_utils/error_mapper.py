@@ -18,6 +18,7 @@ from workbench.core.subprocess.version_checker import (
     BinaryNotFoundError, SuspiciousBinaryError, VersionParseError
 )
 from workbench.core.subprocess.pipeline import PipelineError
+from workbench.core.subprocess.output_check import OutputError, OutputMissingError
 
 
 def map_orchestrator_error(exc: Exception) -> Dict[str, Any]:
@@ -33,6 +34,15 @@ def map_orchestrator_error(exc: Exception) -> Dict[str, Any]:
             "message": f"Échec de l'étape '{exc.step_id}' : {inner_error['message']}",
             "status_code": inner_error["status_code"],
             "details": {"step_id": exc.step_id, "cause": inner_error}
+        }
+
+    # 1 bis. L'outil s'est terminé « normalement » sans produire un fichier exploitable
+    if isinstance(exc, OutputError):
+        return {
+            "error_code": "OUTPUT_MISSING" if isinstance(exc, OutputMissingError) else "OUTPUT_EMPTY",
+            "message": f"Le traitement n'a pas produit de résultat : {exc.reason}.",
+            "status_code": 500,
+            "details": {"filename": exc.filename},
         }
 
     # 2. Erreurs de capacité et cycle de vie
