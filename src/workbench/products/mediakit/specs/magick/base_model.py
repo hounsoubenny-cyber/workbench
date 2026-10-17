@@ -11,7 +11,8 @@ Workbench Mediakit — Modèles d'input Pydantic complets pour toutes les action
 """
 
 from typing import Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from workbench.products.mediakit.mk_utils.text import OVERLAY_TEXT_HELP, check_overlay_text
 from workbench.specs.uploads import UploadRef
 
 
@@ -53,7 +54,7 @@ class CropImageInput(BaseMagickActionInput):
 
 
 class SquareThumbnailInput(BaseMagickActionInput):
-    dimension: Literal["128", "256", "512", "1024"] = "512"
+    dimension: Literal["128", "256", "512", "800", "1024"] = "512"
     output_format: Literal["png", "jpg", "webp"] = "jpg"
 
 
@@ -149,11 +150,16 @@ class WatermarkImageInput(BaseMagickActionInput):
 
 
 class WatermarkTextInput(BaseMagickActionInput):
-    text: str = Field(default="COPYRIGHT", max_length=50)
+    text: str = Field(default="COPYRIGHT", min_length=1, max_length=50, description=OVERLAY_TEXT_HELP)
     position: Literal["center", "south", "southeast", "southwest", "north"] = "southeast"
     pointsize: int = Field(default=28, ge=10, le=150)
     color: Literal["white", "black", "red", "gold", "yellow"] = "white"
     output_format: Literal["jpg", "png", "webp"] = "jpg"
+
+    @field_validator("text")
+    @classmethod
+    def _safe_text(cls, v: str) -> str:
+        return check_overlay_text(v)
 
 
 class AddBorderInput(BaseMagickActionInput):

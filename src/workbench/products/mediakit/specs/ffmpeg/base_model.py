@@ -16,7 +16,7 @@ from workbench.specs.uploads import UploadRef
 
 class BaseFfmpegActionInput(BaseModel):
     """Input commun pour toute action FFmpeg prenant au moins un fichier source."""
-    input_file: str = UploadRef(description="Fichier vidéo ou audio source principal")
+    input_file: str = UploadRef(description="Fichier vidéo source")
 
 
 _RESOLUTIONS = ["1920x1080", "1280x720", "854x480", "640x360", "426x240"]

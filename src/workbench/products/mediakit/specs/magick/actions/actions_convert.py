@@ -28,6 +28,16 @@ from workbench.products.mediakit.specs.magick.base_model import (
 MIN_MAGICK_VERSION = (7, 0)
 
 
+def _webp_animation_args(output_format: str) -> list:
+    """
+    FIX : un GIF animé converti en WebP donnait un fichier de 0 octet (« ERROR adding frame:
+    Invalid frame dimensions ») : l'encodeur WebP animé exige des images à PLEINE taille, or les
+    GIF optimisés stockent des images partielles. `-coalesce` les reconstitue ; sans effet sur
+    une image fixe. Limité aux sorties WebP pour ne rien changer aux autres formats.
+    """
+    return [BoolArg(flag="-coalesce", value=True)] if output_format == "webp" else []
+
+
 # ─── 1. TRANSCODAGE DE FORMAT D'IMAGE ────────────────────────────────────────
 convert_format_spec = MagickSpec[ConvertFormatInput](
     id="magick_convert_format",
@@ -38,6 +48,7 @@ convert_format_spec = MagickSpec[ConvertFormatInput](
     output_filename_template=lambda u: f"converted.{u.output_format}",
     build_args=lambda u: [
         PathArg(value=u.input_file, must_exist=True),
+        *_webp_animation_args(u.output_format),
         PathArg(value=f"converted.{u.output_format}")
     ]
 )
@@ -53,6 +64,7 @@ compress_quality_spec = MagickSpec[CompressQualityInput](
     output_filename_template=lambda u: f"compressed.{u.output_format}",
     build_args=lambda u: [
         PathArg(value=u.input_file, must_exist=True),
+        *_webp_animation_args(u.output_format),
         IntArg(flag="-quality", value=u.quality, min_value=1, max_value=100),
         PathArg(value=f"compressed.{u.output_format}")
     ]

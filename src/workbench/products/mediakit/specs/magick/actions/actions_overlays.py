@@ -20,6 +20,7 @@ from workbench.core.subprocess.wb_subprocess_types import (
     PathArg, EnumArg, IntArg, PatternArg, BoolArg
 )
 from workbench.products.mediakit.specs.magick.base_spec import MagickSpec
+from workbench.products.mediakit.mk_utils.text import OVERLAY_TEXT_PATTERN
 from workbench.products.mediakit.specs.magick.base_model import (
     WatermarkImageInput, WatermarkTextInput, AddBorderInput
 )
@@ -76,7 +77,7 @@ watermark_text_spec = MagickSpec[WatermarkTextInput](
         PatternArg(flag="-annotate", value=_ANNOTATE_OFFSETS.get(u.position, "+15+15")),
         PatternArg(
             value=u.text,
-            allowed_regex=r"^[a-zA-Z0-9_\- #\.\+]+$"
+            allowed_regex=OVERLAY_TEXT_PATTERN
         ),
         PathArg(value=f"text_watermarked.{u.output_format}")
     ]

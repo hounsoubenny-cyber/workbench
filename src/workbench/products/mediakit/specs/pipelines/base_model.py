@@ -15,7 +15,8 @@ sont strictement annotés avec UploadRef pour assurer leur transfert automatique
 """
 
 from typing import Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from workbench.products.mediakit.mk_utils.text import OVERLAY_TEXT_HELP, check_overlay_text
 from workbench.specs.uploads import UploadRef
 
 
@@ -130,8 +131,13 @@ class VideoAudioRemasterInput(BaseModel):
 class VideoTeaserCardInput(BaseModel):
     video_file: str = UploadRef(description="Vidéo source")
     snapshot_timestamp_s: float = Field(default=10.0, ge=0.0)
-    teaser_text: str = Field(default="NOUVEL ÉPISODE", max_length=40)
+    teaser_text: str = Field(default="NOUVEL ÉPISODE", min_length=1, max_length=40, description=OVERLAY_TEXT_HELP)
     text_color: Literal["white", "gold", "yellow", "red"] = "gold"
+
+    @field_validator("teaser_text")
+    @classmethod
+    def _safe_text(cls, v: str) -> str:
+        return check_overlay_text(v)
 
 
 class VideoToOptimizedWebpInput(BaseModel):

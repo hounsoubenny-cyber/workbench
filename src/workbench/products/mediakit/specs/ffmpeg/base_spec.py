@@ -77,10 +77,17 @@ class FfmpegSpec(ActionSpec[InputT]):
         return [*self.SECURITY_ARGS, *modified_args]
 
     def validate_args(self, user_input: BaseFfmpegActionInput, workdir: Path) -> None:
+        # FIX : `validate_arg=False` doit court-circuiter AVANT le contrôle de type. L'orchestrateur
+        # n'appelle pas validate_args() pour une action seule quand validate_arg est False, mais
+        # les PIPELINES l'appellent toujours : une étape dont le modèle d'entrée n'hérite pas de
+        # BaseFfmpegActionInput (ex : ffmpeg_image_plus_audio) faisait échouer tout le pipeline.
+        if not self.validate_arg:
+            return
+
         if not isinstance(user_input, BaseFfmpegActionInput):
             raise ValueError("Input should be a valid BaseFfmpegActionInput !")
 
-        if self.validate_arg:
+        if True:
             resolved = resolve_sandboxed_path(user_input.input_file, workdir)
             if not is_video_file(str(resolved)):
                 raise IsNotVideoFile(
