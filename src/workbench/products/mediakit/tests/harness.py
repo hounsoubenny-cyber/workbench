@@ -32,7 +32,7 @@ WS_HEADERS = {"Host": HOST}   # le TestClient met « testserver » sur les WebSo
 
 # ─── Médias d'exemple ────────────────────────────────────────────────────────
 
-MEDIA_KINDS = ("video", "audio", "image", "logo", "subtitles")
+MEDIA_KINDS = ("video", "audio", "image", "logo", "subtitles", "video_subs", "gif")
 
 
 def _run(*cmd, cwd=None):
@@ -44,15 +44,20 @@ def _run(*cmd, cwd=None):
 def build_media(folder: Path) -> dict[str, tuple[str, bytes]]:
     """Génère un jeu de médias minuscules. Retourne {kind: (nom d'upload, contenu)}."""
     folder.mkdir(parents=True, exist_ok=True)
-    _run("ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=duration=3:size=320x240:rate=15",
-         "-f", "lavfi", "-i", "sine=frequency=440:duration=3", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+    _run("ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=duration=12:size=320x240:rate=15",
+         "-f", "lavfi", "-i", "sine=frequency=440:duration=12", "-c:v", "libx264", "-pix_fmt", "yuv420p",
          "-c:a", "aac", "-shortest", str(folder / "video.mp4"))
     _run("ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=330:duration=3",
          "-ac", "2", "-ar", "44100", str(folder / "audio.wav"))
     _run("convert", "-size", "320x240", "gradient:blue-red", str(folder / "image.png"))
     _run("convert", "-size", "64x64", "xc:none", "-fill", "white", "-draw", "circle 32,32 32,8", str(folder / "logo.png"))
     (folder / "subs.srt").write_text("1\n00:00:00,500 --> 00:00:02,000\nBonjour\n\n2\n00:00:02,000 --> 00:00:02,900\nMonde\n", encoding="utf-8")
-    names = {"video": "video.mp4", "audio": "audio.wav", "image": "image.png", "logo": "logo.png", "subtitles": "subs.srt"}
+    _run("ffmpeg", "-v", "error", "-y", "-i", str(folder / "video.mp4"), "-i", str(folder / "subs.srt"),
+         "-c", "copy", "-c:s", "mov_text", str(folder / "video_subs.mp4"))
+    _run("ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=duration=2:size=160x120:rate=10",
+         "-vf", "split[a][b];[a]palettegen[p];[b][p]paletteuse", str(folder / "anim.gif"))
+    names = {"video": "video.mp4", "audio": "audio.wav", "image": "image.png", "logo": "logo.png",
+             "subtitles": "subs.srt", "video_subs": "video_subs.mp4", "gif": "anim.gif"}
     return {k: (n, (folder / n).read_bytes()) for k, n in names.items()}
 
 
@@ -209,3 +214,21 @@ def verify_output(data: bytes, filename: str, tmp: Path) -> str | None:
         if i.returncode == 0:
             return None
     return f"illisible par ffprobe/identify : {r.stderr.decode()[:160]}"
+
+
+def probe(data: bytes, tmp: Path, ext: str) -> dict:
+    """Description JSON (format + flux) du fichier, par ffprobe — pour vérifier le RÉSULTAT d'une action."""
+    path = tmp / f"probe.{ext}"
+    path.write_bytes(data)
+    r = subprocess.run(["ffprobe", "-v", "error", "-print_format", "json", "-show_format", "-show_streams", str(path)],
+                       capture_output=True, timeout=60)
+    assert r.returncode == 0, r.stderr.decode()[:200]
+    return json.loads(r.stdout)
+
+
+def video_stream(info: dict) -> dict:
+    return next(s for s in info["streams"] if s["codec_type"] == "video")
+
+
+def duration(info: dict) -> float:
+    return float(info["format"]["duration"])

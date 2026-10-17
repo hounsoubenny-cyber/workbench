@@ -1,4 +1,4 @@
-name: 'Docukit — tests'
+name: 'Tests — socle, Docukit, Mediakit'
 
 on:
   push:
@@ -13,10 +13,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Outils système (qpdf, poppler, tesseract)
+      - name: Outils système (qpdf, poppler, tesseract, ffmpeg, sox, ImageMagick)
         run: |
           sudo apt-get update
-          sudo apt-get install -y qpdf poppler-utils tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng
+          sudo apt-get install -y qpdf poppler-utils tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng \
+            ffmpeg sox libsox-fmt-all imagemagick libmagic1
 
       # Le paquet pandoc d'Ubuntu ne sait pas produire docx/odt/epub en mode --sandbox
       # (fichiers de données externes). Le binaire officiel, si : on teste ce chemin aussi.
@@ -31,11 +32,12 @@ jobs:
 
       - name: Dépendances Python
         run: |
-          pip install -r src/workbench/products/docukit/requirements-dev.txt
+          pip install -r src/workbench/products/docukit/requirements-dev.txt python-magic
           pip install -e .
 
-      - name: Tests (socle + Docukit)
-        run: python -m pytest src/workbench -q --ignore=src/workbench/products/mediakit
+      # Les tests `magick` exigent ImageMagick 7 : sur ce runner (ImageMagick 6) ils sont SAUTÉS, pas en échec.
+      - name: Tests (socle + Docukit + Mediakit)
+        run: python -m pytest src/workbench -q
 
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
